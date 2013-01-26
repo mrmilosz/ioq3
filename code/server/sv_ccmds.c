@@ -1380,6 +1380,15 @@ static void SV_KillServer_f( void ) {
 	SV_Shutdown( "killserver" );
 }
 
+/*
+=================
+SV_Download
+=================
+*/
+static void SV_Download_f( void ) {
+	COM_Prinrf( "testing command\n" );
+}
+
 //===========================================================
 
 /*
@@ -1448,6 +1457,7 @@ void SV_AddOperatorCommands( void ) {
 	Cmd_AddCommand("bandel", SV_BanDel_f);
 	Cmd_AddCommand("exceptdel", SV_ExceptDel_f);
 	Cmd_AddCommand("flushbans", SV_FlushBans_f);
+	Cmd_AddCommand("download", SV_Download_f);
 }
 
 /*
