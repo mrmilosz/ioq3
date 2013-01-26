@@ -1386,7 +1386,7 @@ SV_Download
 =================
 */
 static void SV_Download_f( void ) {
-	COM_Prinrf( "testing command\n" );
+	Com_Printf( "testing command\n" );
 }
 
 //===========================================================
