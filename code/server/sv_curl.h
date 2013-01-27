@@ -29,5 +29,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 qboolean SV_cURL_Init( void );
 void SV_cURL_Shutdown( void );
 void SV_cURL_Cleanup( void );
+void SV_cURL_BeginDownload( const char * );
+void SV_cURL_PerformDownload( void );
 
 #endif // __SVCURL_H__

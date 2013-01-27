@@ -99,15 +99,20 @@ typedef struct {
 	int				restartTime;
 	int				time;
 
+	fileHandle_t download;
+	char		downloadTempName[MAX_OSPATH];
+	char		downloadName[MAX_OSPATH];
 #ifdef USE_CURL
 	// for downloading maps to the server baseq3 via RCON
 	qboolean	cURLEnabled;
-	qboolean	cURLUsed;
 	qboolean	cURLDisconnected;
 	char		downloadURL[MAX_OSPATH];
 	CURL		*downloadCURL;
 	CURLM		*downloadCURLM;
 #endif /* USE_CURL */
+	int			downloadBlock;	// block we are waiting for
+	int			downloadCount;	// how many bytes we got
+	int			downloadSize;	// how many bytes we got
 } server_t;
 
 

@@ -1387,14 +1387,15 @@ SV_Download
 =================
 */
 static void SV_Download_f( void ) {
-	char * urlTemplate;
+	char * sv_downloadSource_str;
 	char * mapName;
-	char * url;
+	char mapUrl[MAX_QPATH];
+	char mapPath[MAX_QPATH];
 
-	urlTemplate = Cvar_VariableString( "sv_downloadSource" );
+	sv_downloadSource_str = sv_downloadSource->string;
 	
-	if ( strstr( urlTemplate, "%s" ) == NULL ) {
-		Com_Printf( "Variable sv_downloadSource must contain placeholder %%s for map name.\n", url );
+	if ( strstr( sv_downloadSource_str, "%s" ) == NULL ) {
+		Com_Printf( "Variable sv_downloadSource must contain placeholder %%s for map name.\n" );
 		return;
 	}
 
@@ -1403,13 +1404,18 @@ static void SV_Download_f( void ) {
 		return;
 	}
 
-	mapName = Cmd_Argv( 1 );
-	url = (char *) malloc( strlen( urlTemplate ) + strlen( mapName ) );
+	mapName = Cmd_Argv(1);
 
-	sprintf( url, urlTemplate, mapName );
-	Com_Printf( "If this command worked, we would try to download from %s\n", url );
+	Com_sprintf( mapPath, sizeof(mapPath), "maps/%s.bsp", mapName );
+	if ( FS_ReadFile( mapPath, NULL ) != -1 ) {
+		Com_Printf( "Map %s already present in server filesystem.\n", mapPath );
+		return;
+	}
 
-	free( url );
+	Com_sprintf( mapUrl, sizeof(mapUrl), sv_downloadSource_str, mapName );
+	Com_Printf( "Downloading from %s.\n", mapUrl );
+
+	SV_cURL_BeginDownload( mapUrl );
 }
 #endif
 

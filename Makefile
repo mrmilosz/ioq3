@@ -1871,6 +1871,9 @@ Q3DOBJ = \
   $(B)/ded/net_ip.o \
   $(B)/ded/huffman.o \
   \
+  $(B)/ded/cm_curl.o \
+  $(B)/ded/sv_curl.o \
+  \
   $(B)/ded/q_math.o \
   $(B)/ded/q_shared.o \
   \

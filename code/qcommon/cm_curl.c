@@ -28,7 +28,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifdef USE_CURL_DLOPEN
 #include "../sys/sys_loadlib.h"
 
-cvar_t *cl_cURLLib;
+cvar_t *com_cURLLib;
 
 char* (*qcurl_version)(void);
 
@@ -98,8 +98,8 @@ qboolean CM_cURL_Init()
 		return qtrue;
 
 
-	Com_Printf("Loading \"%s\"...", cl_cURLLib->string);
-	if(!(cURLLib = Sys_LoadDll(cl_cURLLib->string, qtrue)))
+	Com_Printf("Loading \"%s\"...", com_cURLLib->string);
+	if(!(cURLLib = Sys_LoadDll(com_cURLLib->string, qtrue)))
 	{
 #ifdef ALTERNATE_CURL_LIB
 		// On some linux distributions there is no libcurl.so.3, but only libcurl.so.4. That one works too.

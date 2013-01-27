@@ -659,7 +659,7 @@ void SV_Init (void)
 
 #ifdef USE_CURL
         // This default URL is specifically meant for the Defrag mod, which has such a repository
-        sv_downloadSource = Cvar_Get("sv_downloadSource", "http:/worldspawn.org/getpk3bymapname.php/%s", CVAR_SERVERINFO | CVAR_ARCHIVE);
+        sv_downloadSource = Cvar_Get("sv_downloadSource", "http://worldspawn.org/getpk3bymapname.php/%s", CVAR_SERVERINFO | CVAR_ARCHIVE);
 #endif
 
 	Cvar_Get ("sv_paks", "", CVAR_SYSTEMINFO | CVAR_ROM );
@@ -757,6 +757,10 @@ void SV_Shutdown( char *finalmsg ) {
 	if ( svs.clients && !com_errorEntered ) {
 		SV_FinalMessage( finalmsg );
 	}
+
+#ifdef USE_CURL
+	SV_cURL_Shutdown();
+#endif
 
 	SV_RemoveOperatorCommands();
 	SV_MasterShutdown();

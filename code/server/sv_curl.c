@@ -71,14 +71,17 @@ void SV_cURL_Cleanup( void )
 		sv.downloadCURL = NULL;
 	}
 }
-/* TODO
+
 static int SV_cURL_CallbackProgress( void *dummy, double dltotal, double dlnow,
 	double ultotal, double ulnow )
 {
+//TODO make these happen or make them go away
+	/*
 	sv.downloadSize = (int)dltotal;
 	Cvar_SetValue( "sv_downloadSize", sv.downloadSize );
 	sv.downloadCount = (int)dlnow;
 	Cvar_SetValue( "sv_downloadCount", sv.downloadCount );
+	*/
 	return 0;
 }
 
@@ -89,25 +92,37 @@ static size_t SV_cURL_CallbackWrite(void *buffer, size_t size, size_t nmemb,
 	return size*nmemb;
 }
 
-void SV_cURL_BeginDownload( const char *mapName )
+void SV_cURL_BeginDownload( const char *remoteURL )
 {
-	sv.cURLUsed = qtrue;
+	char * net_ip_str;
+	char localName[MAX_QPATH];
+	char fileName[MAX_QPATH];
 	Com_Printf("URL: %s\n", remoteURL);
 	Com_DPrintf("***** SV_cURL_BeginDownload *****\n"
-		"Localname: %s\n"
 		"RemoteURL: %s\n"
-		"****************************\n", localName, remoteURL);
-	SV_cURL_Cleanup();
+		"****************************\n", remoteURL);
+	SV_cURL_Init();
+
+//TODO send maps to ~/.q3a/defrag
+//TODO do a cURL head request to figure out name of pk3
+//TODO handle 503 errors and other http errors (especially 404)
+	Com_sprintf(fileName, sizeof(fileName), "%s", "test");
+
+	Com_sprintf(localName, sizeof(localName), "%s/%s.pk3", BASEGAME, fileName);
+
 	Q_strncpyz(sv.downloadURL, remoteURL, sizeof(sv.downloadURL));
 	Q_strncpyz(sv.downloadName, localName, sizeof(sv.downloadName));
 	Com_sprintf(sv.downloadTempName, sizeof(sv.downloadTempName),
-		"%s.tmp", localName);
+		"%s.tmp", fileName);
 
+//TODO make these happen or make them go away
 	// Set so UI gets access to it
+	/*
 	Cvar_Set("sv_downloadName", localName);
 	Cvar_Set("sv_downloadSize", "0");
 	Cvar_Set("sv_downloadCount", "0");
 	Cvar_SetValue("sv_downloadTime", sv.realtime);
+	*/
 
 	sv.downloadBlock = 0; // Starting new file
 	sv.downloadCount = 0;
@@ -125,12 +140,14 @@ void SV_cURL_BeginDownload( const char *mapName )
 		return;
 	}
 
+	net_ip_str = Cvar_VariableString( "net_ip" );
+
 	if(com_developer->integer)
 		qcurl_easy_setopt(sv.downloadCURL, CURLOPT_VERBOSE, 1);
 	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_URL, sv.downloadURL);
 	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_TRANSFERTEXT, 0);
 	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_REFERER, va("ioQ3://%s",
-		NET_AdrToString(sv.serverAddress)));
+		net_ip_str));
 	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_USERAGENT, va("%s %s",
 		Q3_VERSION, qcurl_version()));
 	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_WRITEFUNCTION,
@@ -153,6 +170,8 @@ void SV_cURL_BeginDownload( const char *mapName )
 	}
 	qcurl_multi_add_handle(sv.downloadCURLM, sv.downloadCURL);
 
+// TODO figure out what to do with this shit... I think it's for clients only so it can be deleted
+/*
 	if(!(sv.sv_allowDownload & DLF_NO_DISCONNECT) &&
 		!sv.cURLDisconnected) {
 
@@ -162,6 +181,7 @@ void SV_cURL_BeginDownload( const char *mapName )
 		SV_WritePacket();
 		sv.cURLDisconnected = qtrue;
 	}
+*/
 }
 
 void SV_cURL_PerformDownload(void)
@@ -185,7 +205,8 @@ void SV_cURL_PerformDownload(void)
 	FS_FCloseFile(sv.download);
 	if(msg->msg == CURLMSG_DONE && msg->data.result == CURLE_OK) {
 		FS_SV_Rename(sv.downloadTempName, sv.downloadName);
-		sv.downloadRestart = qtrue;
+		FS_Restart( sv.checksumFeed );
+		Com_Printf( "Finished downloading %s.\n", sv.downloadName );
 	}
 	else {
 		long code;
@@ -197,7 +218,7 @@ void SV_cURL_PerformDownload(void)
 			code, sv.downloadURL);
 	}
 
-	SV_NextDownload();
+	SV_cURL_Shutdown();
 }
-*/
+
 #endif // USE_CURL

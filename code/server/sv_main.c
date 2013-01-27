@@ -1176,6 +1176,14 @@ void SV_Frame( int msec ) {
 
 	// send a heartbeat to the master if needed
 	SV_MasterHeartbeat(HEARTBEAT_FOR_MASTER);
+
+	#ifdef USE_CURL
+	// continue to monitor progress on the current map download
+	if (sv.downloadCURLM) {
+		SV_cURL_PerformDownload();
+	}
+	#endif
+	
 }
 
 /*

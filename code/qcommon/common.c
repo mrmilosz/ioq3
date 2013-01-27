@@ -31,6 +31,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <winsock.h>
 #endif
 
+#ifdef USE_CURL
+#include "cm_curl.h"
+#endif
+
 int demo_protocols[] =
 { 67, 66, 0 };
 
@@ -2837,6 +2841,10 @@ void Com_Init( char *commandLine ) {
 	{
 		pipefile = FS_FCreateOpenPipeFile( com_pipefile->string );
 	}
+
+#ifdef USE_CURL
+	com_cURLLib = Cvar_Get("com_cURLLib", DEFAULT_CURL_LIB, CVAR_ARCHIVE);
+#endif
 
 	Com_Printf ("--- Common Initialization Complete ---\n");
 }
