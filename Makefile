@@ -528,9 +528,11 @@ ifeq ($(PLATFORM),mingw32)
 
   ifeq ($(USE_CURL),1)
     CLIENT_CFLAGS += $(CURL_CFLAGS)
+    SERVER_CFLAGS += $(CURL_CFLAGS)
     ifneq ($(USE_CURL_DLOPEN),1)
       ifeq ($(USE_LOCAL_HEADERS),1)
         CLIENT_CFLAGS += -DCURL_STATICLIB
+        SERVER_CFLAGS += -DCURL_STATICLIB
         ifeq ($(ARCH),x64)
           CLIENT_LIBS += $(LIBSDIR)/win64/libcurl.a
         else
@@ -655,6 +657,7 @@ ifeq ($(PLATFORM),openbsd)
 
   ifeq ($(USE_CURL),1)
     CLIENT_CFLAGS += $(CURL_CFLAGS)
+    SERVER_CFLAGS += $(CURL_CFLAGS)
     USE_CURL_DLOPEN=0
   endif
 
@@ -904,8 +907,10 @@ endif
 
 ifeq ($(USE_CURL),1)
   CLIENT_CFLAGS += -DUSE_CURL
+  SERVER_CFLAGS += -DUSE_CURL
   ifeq ($(USE_CURL_DLOPEN),1)
     CLIENT_CFLAGS += -DUSE_CURL_DLOPEN
+    SERVER_CFLAGS += -DUSE_CURL_DLOPEN
   endif
 endif
 
@@ -1408,7 +1413,9 @@ Q3OBJ = \
   $(B)/client/qal.o \
   $(B)/client/snd_openal.o \
   \
+  $(B)/client/cm_curl.o \
   $(B)/client/cl_curl.o \
+  $(B)/client/sv_curl.o \
   \
   $(B)/client/sv_bot.o \
   $(B)/client/sv_ccmds.o \

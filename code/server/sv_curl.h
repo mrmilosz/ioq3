@@ -1,6 +1,6 @@
 /*
 ===========================================================================
-Copyright (C) 2006 Tony J. White (tjw@tjw.org)
+Copyright (C) 2013 Milosz Kosmider (milosz@milosz.ca)
 
 This file is part of Quake III Arena source code.
 
@@ -19,17 +19,15 @@ along with Quake III Arena source code; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
-// cl_curl.h
+// sv_curl.h
 
-#ifndef __CLCURL_H__
-#define __CLCURL_H__
+#ifndef __SVCURL_H__
+#define __SVCURL_H__
 
 #include "../qcommon/cm_curl.h"
 
-qboolean CL_cURL_Init( void );
-void CL_cURL_Shutdown( void );
-void CL_cURL_BeginDownload( const char *localName, const char *remoteURL );
-void CL_cURL_PerformDownload( void );
-void CL_cURL_Cleanup( void );
+qboolean SV_cURL_Init( void );
+void SV_cURL_Shutdown( void );
+void SV_cURL_Cleanup( void );
 
-#endif // __CLCURL_H__
+#endif // __SVCURL_H__

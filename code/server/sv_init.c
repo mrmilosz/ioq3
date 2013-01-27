@@ -656,6 +656,12 @@ void SV_Init (void)
 	sv_voip = Cvar_Get("sv_voip", "1", CVAR_SYSTEMINFO | CVAR_LATCH);
 	Cvar_CheckRange(sv_voip, 0, 1, qtrue);
 #endif
+
+#ifdef USE_CURL
+        // This default URL is specifically meant for the Defrag mod, which has such a repository
+        sv_downloadSource = Cvar_Get("sv_downloadSource", "http:/worldspawn.org/getpk3bymapname.php/%s", CVAR_SERVERINFO | CVAR_ARCHIVE);
+#endif
+
 	Cvar_Get ("sv_paks", "", CVAR_SYSTEMINFO | CVAR_ROM );
 	Cvar_Get ("sv_pakNames", "", CVAR_SYSTEMINFO | CVAR_ROM );
 	Cvar_Get ("sv_referencedPaks", "", CVAR_SYSTEMINFO | CVAR_ROM );

@@ -1380,14 +1380,38 @@ static void SV_KillServer_f( void ) {
 	SV_Shutdown( "killserver" );
 }
 
+#ifdef USE_CURL
 /*
 =================
 SV_Download
 =================
 */
 static void SV_Download_f( void ) {
-	Com_Printf( "testing command\n" );
+	char * urlTemplate;
+	char * mapName;
+	char * url;
+
+	urlTemplate = Cvar_VariableString( "sv_downloadSource" );
+	
+	if ( strstr( urlTemplate, "%s" ) == NULL ) {
+		Com_Printf( "Variable sv_downloadSource must contain placeholder %%s for map name.\n", url );
+		return;
+	}
+
+	if ( Cmd_Argc() < 2 ) {
+		Com_Printf( "No map name specified.\n" );
+		return;
+	}
+
+	mapName = Cmd_Argv( 1 );
+	url = (char *) malloc( strlen( urlTemplate ) + strlen( mapName ) );
+
+	sprintf( url, urlTemplate, mapName );
+	Com_Printf( "If this command worked, we would try to download from %s\n", url );
+
+	free( url );
 }
+#endif
 
 //===========================================================
 
@@ -1457,7 +1481,9 @@ void SV_AddOperatorCommands( void ) {
 	Cmd_AddCommand("bandel", SV_BanDel_f);
 	Cmd_AddCommand("exceptdel", SV_ExceptDel_f);
 	Cmd_AddCommand("flushbans", SV_FlushBans_f);
+#ifdef USE_CURL
 	Cmd_AddCommand("download", SV_Download_f);
+#endif
 }
 
 /*

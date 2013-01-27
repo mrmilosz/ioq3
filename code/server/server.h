@@ -26,6 +26,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../game/g_public.h"
 #include "../game/bg_public.h"
 
+#ifdef USE_CURL
+#include "sv_curl.h"
+#endif
+
 //=============================================================================
 
 #define	PERS_SCORE				0		// !!! MUST NOT CHANGE, SERVER AND
@@ -94,6 +98,16 @@ typedef struct {
 
 	int				restartTime;
 	int				time;
+
+#ifdef USE_CURL
+	// for downloading maps to the server baseq3 via RCON
+	qboolean	cURLEnabled;
+	qboolean	cURLUsed;
+	qboolean	cURLDisconnected;
+	char		downloadURL[MAX_OSPATH];
+	CURL		*downloadCURL;
+	CURLM		*downloadCURLM;
+#endif /* USE_CURL */
 } server_t;
 
 
@@ -300,6 +314,10 @@ extern	int serverBansCount;
 
 #ifdef USE_VOIP
 extern	cvar_t	*sv_voip;
+#endif
+
+#ifdef USE_CURL
+extern	cvar_t	*sv_downloadSource;
 #endif
 
 
