@@ -110,7 +110,6 @@ typedef struct {
 	CURL		*downloadCURL;
 	CURLM		*downloadCURLM;
 #endif /* USE_CURL */
-	int			downloadBlock;	// block we are waiting for
 	int			downloadCount;	// how many bytes we got
 	int			downloadSize;	// how many bytes we got
 } server_t;

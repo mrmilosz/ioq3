@@ -75,13 +75,12 @@ void SV_cURL_Cleanup( void )
 static int SV_cURL_CallbackProgress( void *dummy, double dltotal, double dlnow,
 	double ultotal, double ulnow )
 {
-//TODO make these happen or make them go away
-	/*
 	sv.downloadSize = (int)dltotal;
-	Cvar_SetValue( "sv_downloadSize", sv.downloadSize );
 	sv.downloadCount = (int)dlnow;
+#if 0
+	Cvar_SetValue( "sv_downloadSize", sv.downloadSize );
 	Cvar_SetValue( "sv_downloadCount", sv.downloadCount );
-	*/
+#endif
 	return 0;
 }
 
@@ -92,39 +91,71 @@ static size_t SV_cURL_CallbackWrite(void *buffer, size_t size, size_t nmemb,
 	return size*nmemb;
 }
 
+static size_t SV_cURL_CallbackHeader(void *buffer, size_t size, size_t nmemb,
+	void *userdata)
+{
+	int sizeInBytes;
+	char * header;
+	char * token;
+
+	sizeInBytes = size * nmemb;
+	header = (char *) buffer;
+
+	// Plant null-char after header just in case
+	header[sizeInBytes] = '\0';
+
+	// Advance pointer to beginning of header name
+	token = strtok( header, ": " );
+
+	// Check if we're at content-disposition header
+	if ( Q_stricmp( token, "content-disposition" ) == 0 ) {
+
+		// Load remainder the header
+		token = strtok( NULL, "" );
+
+		// Advance pointer to beginning of filename keypair
+		token = (char *) Q_stristr( token, "filename" );
+		if ( token != NULL ) {
+
+			// Skip syntactical noise
+			token = strtok( token, "=\" " );
+
+			// Advance pointer to beginning of actual filename and plant null-char at end
+			token = strtok( NULL, "\"\n " );
+
+			// Set the download's final name and announce our finding
+			Q_strncpyz( sv.downloadName, token, sizeof(sv.downloadName) );
+			Com_Printf( "Found remote file %s... downloading.\n", sv.downloadName );
+			SV_SendServerCommand( NULL, "chat \"Found package %s!\"", sv.downloadName );
+#if 0
+			Cvar_Set("sv_downloadName", filename);
+#endif
+		}
+	}
+
+	return sizeInBytes;
+}
+
 void SV_cURL_BeginDownload( const char *remoteURL )
 {
 	char * net_ip_str;
-	char localName[MAX_QPATH];
-	char fileName[MAX_QPATH];
-	Com_Printf("URL: %s\n", remoteURL);
-	Com_DPrintf("***** SV_cURL_BeginDownload *****\n"
+	Com_Printf( "URL: %s\n", remoteURL );
+	Com_DPrintf( "***** SV_cURL_BeginDownload *****\n"
 		"RemoteURL: %s\n"
-		"****************************\n", remoteURL);
+		"****************************\n", remoteURL );
 	SV_cURL_Init();
 
-//TODO send maps to ~/.q3a/defrag
-//TODO do a cURL head request to figure out name of pk3
-//TODO handle 503 errors and other http errors (especially 404)
-	Com_sprintf(fileName, sizeof(fileName), "%s", "test");
+	Q_strncpyz( sv.downloadName, "", 1 );
+	Q_strncpyz( sv.downloadURL, remoteURL, sizeof(sv.downloadURL) );
+	Q_strncpyz( sv.downloadTempName, "currentDownload.tmp", 20 );
 
-	Com_sprintf(localName, sizeof(localName), "%s/%s.pk3", BASEGAME, fileName);
-
-	Q_strncpyz(sv.downloadURL, remoteURL, sizeof(sv.downloadURL));
-	Q_strncpyz(sv.downloadName, localName, sizeof(sv.downloadName));
-	Com_sprintf(sv.downloadTempName, sizeof(sv.downloadTempName),
-		"%s.tmp", fileName);
-
-//TODO make these happen or make them go away
-	// Set so UI gets access to it
-	/*
-	Cvar_Set("sv_downloadName", localName);
+#if 0
 	Cvar_Set("sv_downloadSize", "0");
 	Cvar_Set("sv_downloadCount", "0");
-	Cvar_SetValue("sv_downloadTime", sv.realtime);
-	*/
+	Cvar_SetValue("sv_downloadTime", sv.time);
+#endif
 
-	sv.downloadBlock = 0; // Starting new file
+	sv.downloadSize = 0;
 	sv.downloadCount = 0;
 
 	sv.downloadCURL = qcurl_easy_init();
@@ -157,9 +188,13 @@ void SV_cURL_BeginDownload( const char *remoteURL )
 	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_PROGRESSFUNCTION,
 		SV_cURL_CallbackProgress);
 	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_PROGRESSDATA, NULL);
-	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_FAILONERROR, 1);
+	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_FAILONERROR, 0);
 	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_FOLLOWLOCATION, 1);
 	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_MAXREDIRS, 5);
+	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_WRITEHEADER, NULL);
+	qcurl_easy_setopt(sv.downloadCURL, CURLOPT_HEADERFUNCTION,
+		SV_cURL_CallbackHeader);
+
 	sv.downloadCURLM = qcurl_multi_init();	
 	if(!sv.downloadCURLM) {
 		qcurl_easy_cleanup(sv.downloadCURL);
@@ -169,19 +204,6 @@ void SV_cURL_BeginDownload( const char *remoteURL )
 		return;
 	}
 	qcurl_multi_add_handle(sv.downloadCURLM, sv.downloadCURL);
-
-// TODO figure out what to do with this shit... I think it's for clients only so it can be deleted
-/*
-	if(!(sv.sv_allowDownload & DLF_NO_DISCONNECT) &&
-		!sv.cURLDisconnected) {
-
-		SV_AddReliableCommand("disconnect", qtrue);
-		SV_WritePacket();
-		SV_WritePacket();
-		SV_WritePacket();
-		sv.cURLDisconnected = qtrue;
-	}
-*/
 }
 
 void SV_cURL_PerformDownload(void)
@@ -190,6 +212,12 @@ void SV_cURL_PerformDownload(void)
 	CURLMsg *msg;
 	int c;
 	int i = 0;
+	char * fs_homepath_str;
+	char * fs_basepath_str;
+	char * tempPath;
+	char * finalPath;
+
+	FILE *testFilep;
 
 	res = qcurl_multi_perform(sv.downloadCURLM, &c);
 	while(res == CURLM_CALL_MULTI_PERFORM && i < 100) {
@@ -204,9 +232,37 @@ void SV_cURL_PerformDownload(void)
 	}
 	FS_FCloseFile(sv.download);
 	if(msg->msg == CURLMSG_DONE && msg->data.result == CURLE_OK) {
-		FS_SV_Rename(sv.downloadTempName, sv.downloadName);
-		FS_Restart( sv.checksumFeed );
-		Com_Printf( "Finished downloading %s.\n", sv.downloadName );
+		if ( strcmp( sv.downloadName, "" ) == 0 ) {
+			Com_Printf( "Requested resource does not appear to be a file.\n" );
+			SV_SendServerCommand( NULL, "chat \"Package could not be downloaded!\"" );
+			FS_HomeRemove( sv.downloadTempName );
+		}
+		else {
+			fs_homepath_str = Cvar_VariableString( "fs_homepath" );
+			fs_basepath_str = Cvar_VariableString( "fs_basepath" );
+
+			tempPath = FS_BuildOSPath( fs_homepath_str, sv.downloadTempName, "" );
+			finalPath = FS_BuildOSPath( fs_basepath_str, BASEGAME, sv.downloadName );
+
+			tempPath[strlen(tempPath) - 1] = '\0';
+
+			testFilep = fopen(finalPath, "rb");
+			
+			if (testFilep)
+			{
+				fclose(testFilep);
+				Com_Printf( "File %s already exists on real filesystem!\n", finalPath );
+				SV_SendServerCommand( NULL, "chat \"Package %s already exists!\"", sv.downloadName );
+				FS_HomeRemove( sv.downloadTempName );
+			}
+			else {
+				Com_Printf( "Renaming %s to %s.\n", tempPath, finalPath );
+				rename(tempPath, finalPath);
+				FS_Restart( sv.checksumFeed );
+				Com_Printf( "Finished downloading %s.\n", sv.downloadName );
+				SV_SendServerCommand( NULL, "chat \"Package %s is ready to use!\"", sv.downloadName );
+			}
+		}
 	}
 	else {
 		long code;
