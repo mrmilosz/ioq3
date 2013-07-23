@@ -214,6 +214,7 @@ void SV_cURL_PerformDownload(void)
 	int i = 0;
 	char * fs_homepath_str;
 	char * fs_basepath_str;
+	char * fs_game_str;
 	char * tempPath;
 	char * finalPath;
 
@@ -240,9 +241,10 @@ void SV_cURL_PerformDownload(void)
 		else {
 			fs_homepath_str = Cvar_VariableString( "fs_homepath" );
 			fs_basepath_str = Cvar_VariableString( "fs_basepath" );
+			fs_game_str = Cvar_VariableString( "fs_game" );
 
 			tempPath = FS_BuildOSPath( fs_homepath_str, sv.downloadTempName, "" );
-			finalPath = FS_BuildOSPath( fs_basepath_str, BASEGAME, sv.downloadName );
+			finalPath = FS_BuildOSPath( fs_basepath_str, fs_game_str, sv.downloadName );
 
 			tempPath[strlen(tempPath) - 1] = '\0';
 

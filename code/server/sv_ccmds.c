@@ -1419,6 +1419,16 @@ static void SV_Download_f( void ) {
 }
 #endif
 
+/*
+=================
+SV_ReloadFs_f
+=================
+*/
+static void SV_ReloadFs_f( void ) {
+	FS_Restart( sv.checksumFeed );
+	Com_Printf( "Server filesystem reloaded.\n" );
+}
+
 //===========================================================
 
 /*
@@ -1490,6 +1500,7 @@ void SV_AddOperatorCommands( void ) {
 #ifdef USE_CURL
 	Cmd_AddCommand("download", SV_Download_f);
 #endif
+	Cmd_AddCommand("reload_fs", SV_ReloadFs_f);
 }
 
 /*
