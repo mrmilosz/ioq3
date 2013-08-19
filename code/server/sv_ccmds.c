@@ -1498,7 +1498,8 @@ void SV_AddOperatorCommands( void ) {
 	Cmd_AddCommand("exceptdel", SV_ExceptDel_f);
 	Cmd_AddCommand("flushbans", SV_FlushBans_f);
 #ifdef USE_CURL
-	Cmd_AddCommand("download", SV_Download_f);
+   // Disabled until I get it to pull bsps out of the maps/ folder and kill the pk3... -Milosz
+//	Cmd_AddCommand("download", SV_Download_f);
 #endif
 	Cmd_AddCommand("reload_fs", SV_ReloadFs_f);
 }
