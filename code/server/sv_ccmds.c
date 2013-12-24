@@ -163,7 +163,8 @@ static void SV_Map_f( void ) {
 	}
 
 	// Milosz 2013-12-24 forcing lowercase map names on whiskeysour.ca
-	for (char c = &map; *c; ++c) *c = tolower(*c);
+	char * c = map;
+	for (; *c; ++c) *c = tolower(*c);
 
 	// make sure the level exists before trying to change, so that
 	// a typo at the server console won't end the game
