@@ -162,6 +162,9 @@ static void SV_Map_f( void ) {
 		return;
 	}
 
+	// Milosz 2013-12-24 forcing lowercase map names on whiskeysour.ca
+	for (char c = &map; *c; ++c) *c = tolower(*c);
+
 	// make sure the level exists before trying to change, so that
 	// a typo at the server console won't end the game
 	Com_sprintf (expanded, sizeof(expanded), "maps/%s.bsp", map);
@@ -1394,6 +1397,16 @@ static void SV_CompleteMapName( char *args, int argNum ) {
 }
 
 /*
+=================
+SV_ReloadFs_f
+=================
+*/
+static void SV_ReloadFs_f( void ) {
+       FS_Restart( sv.checksumFeed );
+       Com_Printf( "Server filesystem reloaded.\n" );
+}
+
+/*
 ==================
 SV_AddOperatorCommands
 ==================
@@ -1448,6 +1461,7 @@ void SV_AddOperatorCommands( void ) {
 	Cmd_AddCommand("bandel", SV_BanDel_f);
 	Cmd_AddCommand("exceptdel", SV_ExceptDel_f);
 	Cmd_AddCommand("flushbans", SV_FlushBans_f);
+	Cmd_AddCommand("reload_fs", SV_ReloadFs_f);
 }
 
 /*
