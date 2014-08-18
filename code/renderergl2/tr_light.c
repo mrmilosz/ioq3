@@ -94,12 +94,17 @@ void R_DlightBmodel( bmodel_t *bmodel ) {
 	for ( i = 0 ; i < bmodel->numSurfaces ; i++ ) {
 		surf = tr.world->surfaces + bmodel->firstSurface + i;
 
-		if ( *surf->data == SF_FACE ) {
-			((srfSurfaceFace_t *)surf->data)->dlightBits = mask;
-		} else if ( *surf->data == SF_GRID ) {
-			((srfGridMesh_t *)surf->data)->dlightBits = mask;
-		} else if ( *surf->data == SF_TRIANGLES ) {
-			((srfTriangles_t *)surf->data)->dlightBits = mask;
+		switch(*surf->data)
+		{
+			case SF_FACE:
+			case SF_GRID:
+			case SF_TRIANGLES:
+			case SF_VBO_MESH:
+				((srfBspSurface_t *)surf->data)->dlightBits = mask;
+				break;
+
+			default:
+				break;
 		}
 	}
 }
@@ -403,8 +408,11 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
 	((byte *)&ent->ambientLightInt)[3] = 0xff;
 	
 	// transform the direction to local space
-	// no need to do this if using lightentity glsl shader
 	VectorNormalize( lightDir );
+	ent->modelLightDir[0] = DotProduct( lightDir, ent->e.axis[0] );
+	ent->modelLightDir[1] = DotProduct( lightDir, ent->e.axis[1] );
+	ent->modelLightDir[2] = DotProduct( lightDir, ent->e.axis[2] );
+
 	VectorCopy(lightDir, ent->lightDir);
 }
 
@@ -448,4 +456,33 @@ int R_LightDirForPoint( vec3_t point, vec3_t lightDir, vec3_t normal, world_t *w
 		VectorCopy(normal, lightDir);
 
 	return qtrue;
+}
+
+
+int R_CubemapForPoint( vec3_t point )
+{
+	int cubemapIndex = -1;
+
+	if (r_cubeMapping->integer && tr.numCubemaps)
+	{
+		int i;
+		vec_t shortest = (float)WORLD_SIZE * (float)WORLD_SIZE;
+
+		for (i = 0; i < tr.numCubemaps; i++)
+		{
+			vec3_t diff;
+			vec_t length;
+
+			VectorSubtract(point, tr.cubemapOrigins[i], diff);
+			length = DotProduct(diff, diff);
+
+			if (shortest > length)
+			{
+				shortest = length;
+				cubemapIndex = i;
+			}
+		}
+	}
+
+	return cubemapIndex + 1;
 }

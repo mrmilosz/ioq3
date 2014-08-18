@@ -20,8 +20,8 @@ void main()
 	vec4 color  = texture2D(u_DiffuseMap, var_DiffuseTex);
 #if defined(USE_LIGHTMAP)
 	vec4 color2 = texture2D(u_LightMap, var_LightTex);
-  #if defined(RGBE_LIGHTMAP)
-	color2.rgb *= exp2(color2.a * 255.0 - 128.0);
+  #if defined(RGBM_LIGHTMAP)
+	color2.rgb *= color2.a;
 	color2.a = 1.0;
   #endif
 
@@ -37,6 +37,8 @@ void main()
 	{
 		color = color2;
 	}
+	
+	//color = color * (u_Texture1Env.xxxx + color2 * u_Texture1Env.z) + color2 * u_Texture1Env.y;
 #endif
 
 	gl_FragColor = color * var_Color;

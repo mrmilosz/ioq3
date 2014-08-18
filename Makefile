@@ -187,28 +187,36 @@ ifndef USE_FREETYPE
 USE_FREETYPE=0
 endif
 
+ifndef USE_INTERNAL_LIBS
+USE_INTERNAL_LIBS=1
+endif
+
 ifndef USE_INTERNAL_SPEEX
-USE_INTERNAL_SPEEX=1
+USE_INTERNAL_SPEEX=$(USE_INTERNAL_LIBS)
 endif
 
 ifndef USE_INTERNAL_OGG
-USE_INTERNAL_OGG=1
+USE_INTERNAL_OGG=$(USE_INTERNAL_LIBS)
+endif
+
+ifndef USE_INTERNAL_VORBIS
+USE_INTERNAL_VORBIS=$(USE_INTERNAL_LIBS)
 endif
 
 ifndef USE_INTERNAL_OPUS
-USE_INTERNAL_OPUS=1
+USE_INTERNAL_OPUS=$(USE_INTERNAL_LIBS)
 endif
 
 ifndef USE_INTERNAL_ZLIB
-USE_INTERNAL_ZLIB=1
+USE_INTERNAL_ZLIB=$(USE_INTERNAL_LIBS)
 endif
 
 ifndef USE_INTERNAL_JPEG
-USE_INTERNAL_JPEG=1
+USE_INTERNAL_JPEG=$(USE_INTERNAL_LIBS)
 endif
 
 ifndef USE_LOCAL_HEADERS
-USE_LOCAL_HEADERS=1
+USE_LOCAL_HEADERS=$(USE_INTERNAL_LIBS)
 endif
 
 ifndef USE_RENDERER_DLOPEN
@@ -240,9 +248,10 @@ UIDIR=$(MOUNT_DIR)/ui
 Q3UIDIR=$(MOUNT_DIR)/q3_ui
 JPDIR=$(MOUNT_DIR)/jpeg-8c
 SPEEXDIR=$(MOUNT_DIR)/libspeex
-OGGDIR=$(MOUNT_DIR)/libogg-1.3.0
-OPUSDIR=$(MOUNT_DIR)/opus-1.0.2
-OPUSFILEDIR=$(MOUNT_DIR)/opusfile-0.2
+OGGDIR=$(MOUNT_DIR)/libogg-1.3.1
+VORBISDIR=$(MOUNT_DIR)/libvorbis-1.3.4
+OPUSDIR=$(MOUNT_DIR)/opus-1.1
+OPUSFILEDIR=$(MOUNT_DIR)/opusfile-0.5
 ZDIR=$(MOUNT_DIR)/zlib
 Q3ASMDIR=$(MOUNT_DIR)/tools/asm
 LBURGDIR=$(MOUNT_DIR)/tools/lcc/lburg
@@ -261,19 +270,22 @@ ifneq ($(BUILD_CLIENT),0)
   # set PKG_CONFIG_PATH to influence this, e.g.
   # PKG_CONFIG_PATH=/opt/cross/i386-mingw32msvc/lib/pkgconfig
   ifneq ($(call bin_path, pkg-config),)
-    CURL_CFLAGS=$(shell pkg-config --silence-errors --cflags libcurl)
-    CURL_LIBS=$(shell pkg-config --silence-errors --libs libcurl)
-    OPENAL_CFLAGS=$(shell pkg-config --silence-errors --cflags openal)
-    OPENAL_LIBS=$(shell pkg-config --silence-errors --libs openal)
-    SDL_CFLAGS=$(shell pkg-config --silence-errors --cflags sdl|sed 's/-Dmain=SDL_main//')
-    SDL_LIBS=$(shell pkg-config --silence-errors --libs sdl)
-    FREETYPE_CFLAGS=$(shell pkg-config --silence-errors --cflags freetype2)
+    CURL_CFLAGS ?= $(shell pkg-config --silence-errors --cflags libcurl)
+    CURL_LIBS ?= $(shell pkg-config --silence-errors --libs libcurl)
+    OPENAL_CFLAGS ?= $(shell pkg-config --silence-errors --cflags openal)
+    OPENAL_LIBS ?= $(shell pkg-config --silence-errors --libs openal)
+    SDL_CFLAGS ?= $(shell pkg-config --silence-errors --cflags sdl|sed 's/-Dmain=SDL_main//')
+    SDL_LIBS ?= $(shell pkg-config --silence-errors --libs sdl)
+  else
+    # assume they're in the system default paths (no -I or -L needed)
+    CURL_LIBS ?= -lcurl
+    OPENAL_LIBS ?= -lopenal
   endif
   # Use sdl-config if all else fails
   ifeq ($(SDL_CFLAGS),)
     ifneq ($(call bin_path, sdl-config),)
-      SDL_CFLAGS=$(shell sdl-config --cflags)
-      SDL_LIBS=$(shell sdl-config --libs)
+      SDL_CFLAGS ?= $(shell sdl-config --cflags)
+      SDL_LIBS ?= $(shell sdl-config --libs)
     endif
   endif
 endif
@@ -322,15 +334,13 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu"))
 
   ifeq ($(ARCH),x86_64)
     OPTIMIZEVM = -O3 -fomit-frame-pointer -funroll-loops \
-      -falign-loops=2 -falign-jumps=2 -falign-functions=2 \
-      -fstrength-reduce
+      -falign-functions=2 -fstrength-reduce
     OPTIMIZE = $(OPTIMIZEVM) -ffast-math
     HAVE_VM_COMPILED = true
   else
   ifeq ($(ARCH),x86)
     OPTIMIZEVM = -O3 -march=i586 -fomit-frame-pointer \
-      -funroll-loops -falign-loops=2 -falign-jumps=2 \
-      -falign-functions=2 -fstrength-reduce
+      -funroll-loops -falign-functions=2 -fstrength-reduce
     OPTIMIZE = $(OPTIMIZEVM) -ffast-math
     HAVE_VM_COMPILED=true
   else
@@ -367,22 +377,19 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu"))
 
   ifeq ($(USE_OPENAL),1)
     ifneq ($(USE_OPENAL_DLOPEN),1)
-      CLIENT_LIBS += -lopenal
+      CLIENT_LIBS += $(THREAD_LIBS) $(OPENAL_LIBS)
     endif
   endif
 
   ifeq ($(USE_CURL),1)
+    CLIENT_CFLAGS += $(CURL_CFLAGS)
     ifneq ($(USE_CURL_DLOPEN),1)
-      CLIENT_LIBS += -lcurl
+      CLIENT_LIBS += $(CURL_LIBS)
     endif
   endif
 
   ifeq ($(USE_MUMBLE),1)
     CLIENT_LIBS += -lrt
-  endif
-
-  ifeq ($(USE_FREETYPE),1)
-    BASE_CFLAGS += $(FREETYPE_CFLAGS)
   endif
 
   ifeq ($(ARCH),x86)
@@ -457,13 +464,10 @@ ifeq ($(PLATFORM),darwin)
   endif
 
   ifeq ($(USE_CURL),1)
+    CLIENT_CFLAGS += $(CURL_CFLAGS)
     ifneq ($(USE_CURL_DLOPEN),1)
-      CLIENT_LIBS += -lcurl
+      CLIENT_LIBS += $(CURL_LIBS)
     endif
-  endif
-
-  ifeq ($(USE_FREETYPE),1)
-    BASE_CFLAGS += $(FREETYPE_CFLAGS)
   endif
 
   BASE_CFLAGS += -D_THREAD_SAFE=1
@@ -480,7 +484,6 @@ ifeq ($(PLATFORM),darwin)
     $(LIBSDIR)/macosx/libSDL-1.2.0.dylib
   RENDERER_LIBS += -framework OpenGL $(LIBSDIR)/macosx/libSDL-1.2.0.dylib
 
-  OPTIMIZEVM += -falign-loops=16
   OPTIMIZE = $(OPTIMIZEVM) -ffast-math
 
   SHLIBEXT=dylib
@@ -534,6 +537,10 @@ ifeq ($(PLATFORM),mingw32)
     endif
   endif
 
+  ifeq ($(CC),)
+    $(error Cannot find a suitable cross compiler for $(PLATFORM))
+  endif
+
   BASE_CFLAGS = -Wall -fno-strict-aliasing -Wimplicit -Wstrict-prototypes \
     -DUSE_ICON
 
@@ -551,15 +558,13 @@ ifeq ($(PLATFORM),mingw32)
 
   ifeq ($(ARCH),x86_64)
     OPTIMIZEVM = -O3 -fno-omit-frame-pointer \
-      -falign-loops=2 -funroll-loops -falign-jumps=2 -falign-functions=2 \
-      -fstrength-reduce
-    OPTIMIZE = $(OPTIMIZEVM) --fast-math
+      -funroll-loops -falign-functions=2 -fstrength-reduce
+    OPTIMIZE = $(OPTIMIZEVM) -ffast-math
     HAVE_VM_COMPILED = true
   endif
   ifeq ($(ARCH),x86)
     OPTIMIZEVM = -O3 -march=i586 -fno-omit-frame-pointer \
-      -falign-loops=2 -funroll-loops -falign-jumps=2 -falign-functions=2 \
-      -fstrength-reduce
+      -funroll-loops -falign-functions=2 -fstrength-reduce
     OPTIMIZE = $(OPTIMIZEVM) -ffast-math
     HAVE_VM_COMPILED = true
   endif
@@ -575,12 +580,15 @@ ifeq ($(PLATFORM),mingw32)
   endif
 
   LIBS= -lws2_32 -lwinmm -lpsapi
-  CLIENT_LDFLAGS += -mwindows
+  # clang 3.4 doesn't support this
+  ifneq ("$(CC)", $(findstring "$(CC)", "clang" "clang++"))
+    CLIENT_LDFLAGS += -mwindows
+  endif
   CLIENT_LIBS = -lgdi32 -lole32
   RENDERER_LIBS = -lgdi32 -lole32 -lopengl32
 
   ifeq ($(USE_FREETYPE),1)
-    BASE_CFLAGS += -Ifreetype2
+    FREETYPE_CFLAGS = -Ifreetype2
   endif
 
   ifeq ($(USE_CURL),1)
@@ -621,9 +629,9 @@ ifeq ($(PLATFORM),mingw32)
                       $(LIBSDIR)/win32/libSDL.dll.a
     SDLDLL=SDL.dll
     else
-    CLIENT_LIBS += $(LIBSDIR)/win64/libSDLmain.a \
+    CLIENT_LIBS += $(LIBSDIR)/win64/libSDL64main.a \
                       $(LIBSDIR)/win64/libSDL64.dll.a
-    RENDERER_LIBS += $(LIBSDIR)/win64/libSDLmain.a \
+    RENDERER_LIBS += $(LIBSDIR)/win64/libSDL64main.a \
                       $(LIBSDIR)/win64/libSDL64.dll.a
     SDLDLL=SDL64.dll
     endif
@@ -668,13 +676,14 @@ ifeq ($(PLATFORM),freebsd)
   # optional features/libraries
   ifeq ($(USE_OPENAL),1)
     ifeq ($(USE_OPENAL_DLOPEN),1)
-      CLIENT_LIBS += $(THREAD_LIBS) -lopenal
+      CLIENT_LIBS += $(THREAD_LIBS) $(OPENAL_LIBS)
     endif
   endif
 
   ifeq ($(USE_CURL),1)
+    CLIENT_CFLAGS += $(CURL_CFLAGS)
     ifeq ($(USE_CURL_DLOPEN),1)
-      CLIENT_LIBS += -lcurl
+      CLIENT_LIBS += $(CURL_LIBS)
     endif
   endif
 
@@ -706,15 +715,13 @@ ifeq ($(PLATFORM),openbsd)
 
   ifeq ($(ARCH),x86_64)
     OPTIMIZEVM = -O3 -fomit-frame-pointer -funroll-loops \
-      -falign-loops=2 -falign-jumps=2 -falign-functions=2 \
-      -fstrength-reduce
+      -falign-functions=2 -fstrength-reduce
     OPTIMIZE = $(OPTIMIZEVM) -ffast-math
     HAVE_VM_COMPILED = true
   else
   ifeq ($(ARCH),x86)
     OPTIMIZEVM = -O3 -march=i586 -fomit-frame-pointer \
-      -funroll-loops -falign-loops=2 -falign-jumps=2 \
-      -falign-functions=2 -fstrength-reduce
+      -funroll-loops -falign-functions=2 -fstrength-reduce
     OPTIMIZE = $(OPTIMIZEVM) -ffast-math
     HAVE_VM_COMPILED=true
   else
@@ -762,13 +769,13 @@ ifeq ($(PLATFORM),openbsd)
 
   ifeq ($(USE_OPENAL),1)
     ifneq ($(USE_OPENAL_DLOPEN),1)
-      CLIENT_LIBS += $(THREAD_LIBS) -lopenal
+      CLIENT_LIBS += $(THREAD_LIBS) $(OPENAL_LIBS)
     endif
   endif
 
   ifeq ($(USE_CURL),1)
     ifneq ($(USE_CURL_DLOPEN),1)
-      CLIENT_LIBS += -lcurl
+      CLIENT_LIBS += $(CURL_LIBS)
     endif
   endif
 else # ifeq openbsd
@@ -853,7 +860,6 @@ ifeq ($(PLATFORM),sunos)
   else
   ifeq ($(ARCH),x86)
     OPTIMIZEVM += -march=i586 -fomit-frame-pointer \
-      -falign-loops=2 -falign-jumps=2 \
       -falign-functions=2 -fstrength-reduce
     HAVE_VM_COMPILED=true
     BASE_CFLAGS += -m32
@@ -911,10 +917,6 @@ ifneq ($(HAVE_VM_COMPILED),true)
 endif
 
 TARGETS =
-
-ifeq ($(USE_FREETYPE),1)
-  BASE_CFLAGS += -DBUILD_FREETYPE
-endif
 
 ifndef FULLBINEXT
   FULLBINEXT=.$(ARCH)$(BINEXT)
@@ -988,32 +990,43 @@ ifeq ($(USE_CURL),1)
   endif
 endif
 
-ifeq ($(USE_CODEC_VORBIS),1)
-  CLIENT_CFLAGS += -DUSE_CODEC_VORBIS
-  CLIENT_LIBS += -lvorbisfile -lvorbis
-  NEED_OGG=1
-endif
-
 ifeq ($(USE_CODEC_OPUS),1)
   CLIENT_CFLAGS += -DUSE_CODEC_OPUS
   ifeq ($(USE_INTERNAL_OPUS),1)
-    CLIENT_CFLAGS += -DOPUS_BUILD -DHAVE_LRINTF -DFLOATING_POINT -DUSE_ALLOCA \
+    OPUS_CFLAGS = -DOPUS_BUILD -DHAVE_LRINTF -DFLOATING_POINT -DUSE_ALLOCA \
       -I$(OPUSDIR)/include -I$(OPUSDIR)/celt -I$(OPUSDIR)/silk \
-      -I$(OPUSDIR)/silk/float
-
-    CLIENT_CFLAGS += -I$(OPUSFILEDIR)/include
+      -I$(OPUSDIR)/silk/float -I$(OPUSFILEDIR)/include
   else
-    CLIENT_LIBS += -lopusfile -lopus
+    OPUS_CFLAGS ?= $(shell pkg-config --silence-errors --cflags opusfile opus || true)
+    OPUS_LIBS ?= $(shell pkg-config --silence-errors --libs opusfile opus || echo -lopusfile -lopus)
   endif
+  CLIENT_CFLAGS += $(OPUS_CFLAGS)
+  CLIENT_LIBS += $(OPUS_LIBS)
+  NEED_OGG=1
+endif
+
+ifeq ($(USE_CODEC_VORBIS),1)
+  CLIENT_CFLAGS += -DUSE_CODEC_VORBIS
+  ifeq ($(USE_INTERNAL_VORBIS),1)
+    CLIENT_CFLAGS += -I$(VORBISDIR)/include -I$(VORBISDIR)/lib
+  else
+    VORBIS_CFLAGS ?= $(shell pkg-config --silence-errors --cflags vorbisfile vorbis || true)
+    VORBIS_LIBS ?= $(shell pkg-config --silence-errors --libs vorbisfile vorbis || echo -lvorbisfile -lvorbis)
+  endif
+  CLIENT_CFLAGS += $(VORBIS_CFLAGS)
+  CLIENT_LIBS += $(VORBIS_LIBS)
   NEED_OGG=1
 endif
 
 ifeq ($(NEED_OGG),1)
   ifeq ($(USE_INTERNAL_OGG),1)
-    CLIENT_CFLAGS += -I$(OGGDIR)/include
+    OGG_CFLAGS = -I$(OGGDIR)/include
   else
-    CLIENT_LIBS += -logg
+    OGG_CFLAGS ?= $(shell pkg-config --silence-errors --cflags ogg || true)
+    OGG_LIBS ?= $(shell pkg-config --silence-errors --libs ogg || echo -logg)
   endif
+  CLIENT_CFLAGS += $(OGG_CFLAGS)
+  CLIENT_LIBS += $(OGG_LIBS)
 endif
 
 ifeq ($(USE_RENDERER_DLOPEN),1)
@@ -1028,28 +1041,43 @@ ifeq ($(USE_VOIP),1)
   CLIENT_CFLAGS += -DUSE_VOIP
   SERVER_CFLAGS += -DUSE_VOIP
   ifeq ($(USE_INTERNAL_SPEEX),1)
-    CLIENT_CFLAGS += -DFLOATING_POINT -DUSE_ALLOCA -I$(SPEEXDIR)/include
+    SPEEX_CFLAGS += -DFLOATING_POINT -DUSE_ALLOCA -I$(SPEEXDIR)/include
   else
-    CLIENT_LIBS += -lspeex -lspeexdsp
+    SPEEX_CFLAGS ?= $(shell pkg-config --silence-errors --cflags speex speexdsp || true)
+    SPEEX_LIBS ?= $(shell pkg-config --silence-errors --libs speex speexdsp || echo -lspeex -lspeexdsp)
   endif
+  CLIENT_CFLAGS += $(SPEEX_CFLAGS)
+  CLIENT_LIBS += $(SPEEX_LIBS)
 endif
 
 ifeq ($(USE_INTERNAL_ZLIB),1)
-  BASE_CFLAGS += -DNO_GZIP
-  BASE_CFLAGS += -I$(ZDIR)
+  ZLIB_CFLAGS = -DNO_GZIP -I$(ZDIR)
 else
-  LIBS += -lz
+  ZLIB_CFLAGS ?= $(shell pkg-config --silence-errors --cflags zlib || true)
+  ZLIB_LIBS ?= $(shell pkg-config --silence-errors --libs zlib || echo -lz)
 endif
+BASE_CFLAGS += $(ZLIB_CFLAGS)
+LIBS += $(ZLIB_LIBS)
 
 ifeq ($(USE_INTERNAL_JPEG),1)
   BASE_CFLAGS += -DUSE_INTERNAL_JPEG
   BASE_CFLAGS += -I$(JPDIR)
 else
-  RENDERER_LIBS += -ljpeg
+  # libjpeg doesn't have pkg-config yet, but let users override with
+  # "make JPEG_CFLAGS=-I/opt/jpeg/include JPEG_LIBS='-L/opt/jpeg/lib -ljpeg'"
+  # if they need to
+  JPEG_CFLAGS ?=
+  JPEG_LIBS ?= -ljpeg
+  BASE_CFLAGS += $(JPEG_CFLAGS)
+  RENDERER_LIBS += $(JPEG_LIBS)
 endif
 
 ifeq ($(USE_FREETYPE),1)
-  RENDERER_LIBS += -lfreetype
+  FREETYPE_CFLAGS ?= $(shell pkg-config --silence-errors --cflags freetype2 || true)
+  FREETYPE_LIBS ?= $(shell pkg-config --silence-errors --libs freetype2 || echo -lfreetype)
+
+  BASE_CFLAGS += -DBUILD_FREETYPE $(FREETYPE_CFLAGS)
+  RENDERER_LIBS += $(FREETYPE_LIBS)
 endif
 
 ifeq ("$(CC)", $(findstring "$(CC)", "clang" "clang++"))
@@ -1264,9 +1292,16 @@ ifneq ($(TARGETS),)
 endif
 
 $(B).zip: $(TARGETS)
-ifdef ARCHIVE
+ifeq ($(PLATFORM),darwin)
+  ifdef ARCHIVE
+	@("./make-macosx-app.sh" release $(ARCH); if [ "$$?" -eq 0 ] && [ -d "$(B)/ioquake3.app" ]; then rm -f $@; cd $(B) && zip --symlinks -r9 ../../$@ `find "ioquake3.app" -print | sed -e "s!$(B)/!!g"`; else rm -f $@; cd $(B) && zip -r9 ../../$@ $(NAKED_TARGETS); fi)
+  endif
+endif
+ifneq ($(PLATFORM),darwin)
+  ifdef ARCHIVE
 	@rm -f $@
 	@(cd $(B) && zip -r9 ../../$@ $(NAKED_TARGETS))
+  endif
 endif
 
 makedirs:
@@ -1274,6 +1309,7 @@ makedirs:
 	@if [ ! -d $(B) ];then $(MKDIR) $(B);fi
 	@if [ ! -d $(B)/client ];then $(MKDIR) $(B)/client;fi
 	@if [ ! -d $(B)/client/opus ];then $(MKDIR) $(B)/client/opus;fi
+	@if [ ! -d $(B)/client/vorbis ];then $(MKDIR) $(B)/client/vorbis;fi
 	@if [ ! -d $(B)/renderergl1 ];then $(MKDIR) $(B)/renderergl1;fi
 	@if [ ! -d $(B)/renderergl2 ];then $(MKDIR) $(B)/renderergl2;fi
 	@if [ ! -d $(B)/renderergl2/glsl ];then $(MKDIR) $(B)/renderergl2/glsl;fi
@@ -1819,10 +1855,15 @@ endif
 ifeq ($(USE_CODEC_OPUS),1)
 ifeq ($(USE_INTERNAL_OPUS),1)
 Q3OBJ += \
+  $(B)/client/opus/analysis.o \
+  $(B)/client/opus/mlp.o \
+  $(B)/client/opus/mlp_data.o \
   $(B)/client/opus/opus.o \
   $(B)/client/opus/opus_decoder.o \
   $(B)/client/opus/opus_encoder.o \
   $(B)/client/opus/opus_multistream.o \
+  $(B)/client/opus/opus_multistream_encoder.o \
+  $(B)/client/opus/opus_multistream_decoder.o \
   $(B)/client/opus/repacketizer.o \
   \
   $(B)/client/opus/bands.o \
@@ -1837,6 +1878,8 @@ Q3OBJ += \
   $(B)/client/opus/mdct.o \
   $(B)/client/opus/modes.o \
   $(B)/client/opus/pitch.o \
+  $(B)/client/opus/celt_encoder.o \
+  $(B)/client/opus/celt_decoder.o \
   $(B)/client/opus/celt_lpc.o \
   $(B)/client/opus/quant_bands.o \
   $(B)/client/opus/rate.o \
@@ -1955,7 +1998,8 @@ Q3OBJ += \
   $(B)/client/info.o \
   $(B)/client/internal.o \
   $(B)/client/opusfile.o \
-  $(B)/client/stream.o
+  $(B)/client/stream.o \
+  $(B)/client/wincerts.o
 endif
 endif
 
@@ -1964,6 +2008,33 @@ ifeq ($(USE_INTERNAL_OGG),1)
 Q3OBJ += \
   $(B)/client/bitwise.o \
   $(B)/client/framing.o
+endif
+endif
+
+ifeq ($(USE_CODEC_VORBIS),1)
+ifeq ($(USE_INTERNAL_VORBIS),1)
+Q3OBJ += \
+  $(B)/client/vorbis/analysis.o \
+  $(B)/client/vorbis/bitrate.o \
+  $(B)/client/vorbis/block.o \
+  $(B)/client/vorbis/codebook.o \
+  $(B)/client/vorbis/envelope.o \
+  $(B)/client/vorbis/floor0.o \
+  $(B)/client/vorbis/floor1.o \
+  $(B)/client/vorbis/info.o \
+  $(B)/client/vorbis/lookup.o \
+  $(B)/client/vorbis/lpc.o \
+  $(B)/client/vorbis/lsp.o \
+  $(B)/client/vorbis/mapping0.o \
+  $(B)/client/vorbis/mdct.o \
+  $(B)/client/vorbis/psy.o \
+  $(B)/client/vorbis/registry.o \
+  $(B)/client/vorbis/res0.o \
+  $(B)/client/vorbis/smallft.o \
+  $(B)/client/vorbis/sharedbook.o \
+  $(B)/client/vorbis/synthesis.o \
+  $(B)/client/vorbis/vorbisfile.o \
+  $(B)/client/vorbis/window.o
 endif
 endif
 
@@ -2497,6 +2568,9 @@ $(B)/client/%.o: $(SPEEXDIR)/%.c
 $(B)/client/%.o: $(OGGDIR)/src/%.c
 	$(DO_CC)
 
+$(B)/client/vorbis/%.o: $(VORBISDIR)/lib/%.c
+	$(DO_CC)
+
 $(B)/client/opus/%.o: $(OPUSDIR)/src/%.c
 	$(DO_CC)
 
@@ -2703,6 +2777,10 @@ ifneq ($(BUILD_CLIENT),0)
 	$(INSTALL) $(STRIP_FLAG) -m 0755 $(BR)/renderer_opengl1_$(SHLIBNAME) $(COPYBINDIR)/renderer_opengl1_$(SHLIBNAME)
     ifneq ($(BUILD_RENDERER_OPENGL2),0)
 	$(INSTALL) $(STRIP_FLAG) -m 0755 $(BR)/renderer_opengl2_$(SHLIBNAME) $(COPYBINDIR)/renderer_opengl2_$(SHLIBNAME)
+    endif
+  else
+    ifneq ($(BUILD_RENDERER_OPENGL2),0)
+	$(INSTALL) $(STRIP_FLAG) -m 0755 $(BR)/$(CLIENTBIN)_opengl2$(FULLBINEXT) $(COPYBINDIR)/$(CLIENTBIN)_opengl2$(FULLBINEXT)
     endif
   endif
 endif

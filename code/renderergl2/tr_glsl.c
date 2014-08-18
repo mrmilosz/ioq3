@@ -71,6 +71,7 @@ static uniformInfo_t uniformsInfo[] =
 
 	{ "u_TextureMap", GLSL_INT },
 	{ "u_LevelsMap",  GLSL_INT },
+	{ "u_CubeMap",    GLSL_INT },
 
 	{ "u_ScreenImageMap", GLSL_INT },
 	{ "u_ScreenDepthMap", GLSL_INT },
@@ -78,10 +79,14 @@ static uniformInfo_t uniformsInfo[] =
 	{ "u_ShadowMap",  GLSL_INT },
 	{ "u_ShadowMap2", GLSL_INT },
 	{ "u_ShadowMap3", GLSL_INT },
+	{ "u_ShadowMap4", GLSL_INT },
 
 	{ "u_ShadowMvp",  GLSL_MAT16 },
 	{ "u_ShadowMvp2", GLSL_MAT16 },
 	{ "u_ShadowMvp3", GLSL_MAT16 },
+	{ "u_ShadowMvp4", GLSL_MAT16 },
+
+	{ "u_EnableTextures", GLSL_VEC4 },
 
 	{ "u_DiffuseTexMatrix",  GLSL_VEC4 },
 	{ "u_DiffuseTexOffTurb", GLSL_VEC4 },
@@ -105,6 +110,7 @@ static uniformInfo_t uniformsInfo[] =
 	{ "u_LightUp",       GLSL_VEC3 },
 	{ "u_LightRight",    GLSL_VEC3 },
 	{ "u_LightOrigin",   GLSL_VEC4 },
+	{ "u_ModelLightDir", GLSL_VEC3 },
 	{ "u_LightRadius",   GLSL_FLOAT },
 	{ "u_AmbientLight",  GLSL_VEC3 },
 	{ "u_DirectedLight", GLSL_VEC3 },
@@ -119,15 +125,17 @@ static uniformInfo_t uniformsInfo[] =
 	{ "u_ModelMatrix",               GLSL_MAT16 },
 	{ "u_ModelViewProjectionMatrix", GLSL_MAT16 },
 
-	{ "u_Time",         GLSL_FLOAT },
-	{ "u_VertexLerp"  , GLSL_FLOAT },
-	{ "u_MaterialInfo", GLSL_VEC2 },
+	{ "u_Time",          GLSL_FLOAT },
+	{ "u_VertexLerp" ,   GLSL_FLOAT },
+	{ "u_NormalScale",   GLSL_VEC4 },
+	{ "u_SpecularScale", GLSL_VEC4 },
 
-	{ "u_ViewInfo",    GLSL_VEC4 },
-	{ "u_ViewOrigin",  GLSL_VEC3 },
-	{ "u_ViewForward", GLSL_VEC3 },
-	{ "u_ViewLeft",    GLSL_VEC3 },
-	{ "u_ViewUp",      GLSL_VEC3 },
+	{ "u_ViewInfo",        GLSL_VEC4 },
+	{ "u_ViewOrigin",      GLSL_VEC3 },
+	{ "u_LocalViewOrigin", GLSL_VEC3 },
+	{ "u_ViewForward",     GLSL_VEC3 },
+	{ "u_ViewLeft",        GLSL_VEC3 },
+	{ "u_ViewUp",          GLSL_VEC3 },
 
 	{ "u_InvTexRes",           GLSL_VEC2 },
 	{ "u_AutoExposureMinMax",  GLSL_VEC2 },
@@ -136,7 +144,9 @@ static uniformInfo_t uniformsInfo[] =
 	{ "u_PrimaryLightOrigin",  GLSL_VEC4  },
 	{ "u_PrimaryLightColor",   GLSL_VEC3  },
 	{ "u_PrimaryLightAmbient", GLSL_VEC3  },
-	{ "u_PrimaryLightRadius",  GLSL_FLOAT }
+	{ "u_PrimaryLightRadius",  GLSL_FLOAT },
+
+	{ "u_CubeMapInfo", GLSL_VEC4 },
 };
 
 
@@ -293,11 +303,9 @@ static void GLSL_GetShaderHeader( GLenum shaderType, const GLcharARB *extra, cha
 								"#define alphaGen_t\n"
 								"#define AGEN_LIGHTING_SPECULAR %i\n"
 								"#define AGEN_PORTAL %i\n"
-								"#define AGEN_FRESNEL %i\n"
 								"#endif\n",
 								AGEN_LIGHTING_SPECULAR,
-								AGEN_PORTAL,
-								AGEN_FRESNEL));
+								AGEN_PORTAL));
 
 	Q_strcat(dest, size,
 							 va("#ifndef texenv_t\n"
@@ -314,6 +322,18 @@ static void GLSL_GetShaderHeader( GLenum shaderType, const GLcharARB *extra, cha
 	fbufHeightScale = 1.0f / ((float)glConfig.vidHeight);
 	Q_strcat(dest, size,
 			 va("#ifndef r_FBufScale\n#define r_FBufScale vec2(%f, %f)\n#endif\n", fbufWidthScale, fbufHeightScale));
+
+	if (r_materialGamma->value != 1.0f)
+		Q_strcat(dest, size, va("#ifndef r_materialGamma\n#define r_materialGamma %f\n#endif\n", r_materialGamma->value));
+
+	if (r_lightGamma->value != 1.0f)
+		Q_strcat(dest, size, va("#ifndef r_lightGamma\n#define r_lightGamma %f\n#endif\n", r_lightGamma->value));
+
+	if (r_framebufferGamma->value != 1.0f)
+		Q_strcat(dest, size, va("#ifndef r_framebufferGamma\n#define r_framebufferGamma %f\n#endif\n", r_framebufferGamma->value));
+
+	if (r_tonemapGamma->value != 1.0f)
+		Q_strcat(dest, size, va("#ifndef r_tonemapGamma\n#define r_tonemapGamma %f\n#endif\n", r_tonemapGamma->value));
 
 	if (extra)
 	{
@@ -382,24 +402,30 @@ static int GLSL_LoadGPUShaderText(const char *name, const char *fallback,
 		Com_sprintf(filename, sizeof(filename), "glsl/%s_fp.glsl", name);
 	}
 
-	ri.Printf(PRINT_DEVELOPER, "...loading '%s'\n", filename);
-	size = ri.FS_ReadFile(filename, (void **)&buffer);
+	if ( r_externalGLSL->integer ) {
+		size = ri.FS_ReadFile(filename, (void **)&buffer);
+	} else {
+		size = 0;
+		buffer = NULL;
+	}
+
 	if(!buffer)
 	{
 		if (fallback)
 		{
-			ri.Printf(PRINT_DEVELOPER, "couldn't load, using fallback\n");
+			ri.Printf(PRINT_DEVELOPER, "...loading built-in '%s'\n", filename);
 			shaderText = fallback;
 			size = strlen(shaderText);
 		}
 		else
 		{
-			ri.Printf(PRINT_DEVELOPER, "couldn't load!\n");
+			ri.Printf(PRINT_DEVELOPER, "couldn't load '%s'\n", filename);
 			return 0;
 		}
 	}
 	else
 	{
+		ri.Printf(PRINT_DEVELOPER, "...loading '%s'\n", filename);
 		shaderText = buffer;
 	}
 
@@ -525,9 +551,6 @@ static int GLSL_InitGPUShader2(shaderProgram_t * program, const char *name, int 
 #ifdef USE_VERT_TANGENT_SPACE
 	if(attribs & ATTR_TANGENT)
 		qglBindAttribLocationARB(program->program, ATTR_INDEX_TANGENT, "attr_Tangent");
-
-	if(attribs & ATTR_BITANGENT)
-		qglBindAttribLocationARB(program->program, ATTR_INDEX_BITANGENT, "attr_Bitangent");
 #endif
 
 	if(attribs & ATTR_NORMAL)
@@ -551,9 +574,6 @@ static int GLSL_InitGPUShader2(shaderProgram_t * program, const char *name, int 
 #ifdef USE_VERT_TANGENT_SPACE
 	if(attribs & ATTR_TANGENT2)
 		qglBindAttribLocationARB(program->program, ATTR_INDEX_TANGENT2, "attr_Tangent2");
-
-	if(attribs & ATTR_BITANGENT2)
-		qglBindAttribLocationARB(program->program, ATTR_INDEX_BITANGENT2, "attr_Bitangent2");
 #endif
 
 	GLSL_LinkProgram(program->program);
@@ -812,7 +832,7 @@ void GLSL_SetUniformFloat5(shaderProgram_t *program, int uniformNum, const vec5_
 	qglUniform1fvARB(uniforms[uniformNum], 5, v);
 }
 
-void GLSL_SetUniformMatrix16(shaderProgram_t *program, int uniformNum, const matrix_t matrix)
+void GLSL_SetUniformMat4(shaderProgram_t *program, int uniformNum, const mat4_t matrix)
 {
 	GLint *uniforms = program->uniforms;
 	vec_t *compare = (float *)(program->uniformBuffer + program->uniformBufferOffsets[uniformNum]);
@@ -822,16 +842,16 @@ void GLSL_SetUniformMatrix16(shaderProgram_t *program, int uniformNum, const mat
 
 	if (uniformsInfo[uniformNum].type != GLSL_MAT16)
 	{
-		ri.Printf( PRINT_WARNING, "GLSL_SetUniformMatrix16: wrong type for uniform %i in program %s\n", uniformNum, program->name);
+		ri.Printf( PRINT_WARNING, "GLSL_SetUniformMat4: wrong type for uniform %i in program %s\n", uniformNum, program->name);
 		return;
 	}
 
-	if (Matrix16Compare(matrix, compare))
+	if (Mat4Compare(matrix, compare))
 	{
 		return;
 	}
 
-	Matrix16Copy(matrix, compare);
+	Mat4Copy(matrix, compare);
 
 	qglUniformMatrix4fvARB(uniforms[uniformNum], 1, GL_FALSE, matrix);
 }
@@ -906,8 +926,8 @@ void GLSL_InitGPUShaders(void)
 		if (i & GENERICDEF_USE_LIGHTMAP)
 			Q_strcat(extradefines, 1024, "#define USE_LIGHTMAP\n");
 
-		if (r_hdr->integer && !(glRefConfig.textureFloat && glRefConfig.halfFloatPixel))
-			Q_strcat(extradefines, 1024, "#define RGBE_LIGHTMAP\n");
+		if (r_hdr->integer && !glRefConfig.floatLightmap)
+			Q_strcat(extradefines, 1024, "#define RGBM_LIGHTMAP\n");
 
 		if (!GLSL_InitGPUShader(&tr.genericShader[i], "generic", attribs, qtrue, extradefines, qtrue, fallbackShader_generic_vp, fallbackShader_generic_fp))
 		{
@@ -996,61 +1016,51 @@ void GLSL_InitGPUShaders(void)
 
 	for (i = 0; i < LIGHTDEF_COUNT; i++)
 	{
-		// skip impossible combos
-		if ((i & LIGHTDEF_USE_NORMALMAP) && !r_normalMapping->integer)
-			continue;
+		int lightType = i & LIGHTDEF_LIGHTTYPE_MASK;
+		qboolean fastLight = !(r_normalMapping->integer || r_specularMapping->integer);
 
+		// skip impossible combos
 		if ((i & LIGHTDEF_USE_PARALLAXMAP) && !r_parallaxMapping->integer)
 			continue;
 
-		if ((i & LIGHTDEF_USE_SPECULARMAP) && !r_specularMapping->integer)
+		if (!lightType && (i & LIGHTDEF_USE_PARALLAXMAP))
 			continue;
 
-		if ((i & LIGHTDEF_USE_DELUXEMAP) && !r_deluxeMapping->integer)
+		if (!lightType && (i & LIGHTDEF_USE_SHADOWMAP))
 			continue;
-
-		if (!((i & LIGHTDEF_LIGHTTYPE_MASK) == LIGHTDEF_USE_LIGHTMAP) && (i & LIGHTDEF_USE_DELUXEMAP))
-			continue;
-
-		if (!(i & LIGHTDEF_USE_NORMALMAP) && (i & LIGHTDEF_USE_PARALLAXMAP))
-			continue;
-
-		//if (!((i & LIGHTDEF_LIGHTTYPE_MASK) == LIGHTDEF_USE_LIGHT_VECTOR))
-		if (!(i & LIGHTDEF_LIGHTTYPE_MASK))
-		{
-			if (i & LIGHTDEF_USE_SHADOWMAP)
-				continue;
-		}
 
 		attribs = ATTR_POSITION | ATTR_TEXCOORD | ATTR_COLOR | ATTR_NORMAL;
 
 		extradefines[0] = '\0';
 
-		if (r_normalAmbient->value > 0.003f)
-			Q_strcat(extradefines, 1024, va("#define r_normalAmbient %f\n", r_normalAmbient->value));
+		if (r_deluxeSpecular->value > 0.000001f)
+			Q_strcat(extradefines, 1024, va("#define r_deluxeSpecular %f\n", r_deluxeSpecular->value));
+
+		if (r_specularIsMetallic->value)
+			Q_strcat(extradefines, 1024, "#define SPECULAR_IS_METALLIC\n");
 
 		if (r_dlightMode->integer >= 2)
 			Q_strcat(extradefines, 1024, "#define USE_SHADOWMAP\n");
 
 		if (1)
-		{
 			Q_strcat(extradefines, 1024, "#define SWIZZLE_NORMALMAP\n");
-		}
 
-		if (r_hdr->integer && !(glRefConfig.textureFloat && glRefConfig.halfFloatPixel))
-			Q_strcat(extradefines, 1024, "#define RGBE_LIGHTMAP\n");
+		if (r_hdr->integer && !glRefConfig.floatLightmap)
+			Q_strcat(extradefines, 1024, "#define RGBM_LIGHTMAP\n");
 
-		if (i & LIGHTDEF_LIGHTTYPE_MASK)
+		if (lightType)
 		{
 			Q_strcat(extradefines, 1024, "#define USE_LIGHT\n");
 
-			if (r_normalMapping->integer == 0 && r_specularMapping->integer == 0)
+			if (fastLight)
 				Q_strcat(extradefines, 1024, "#define USE_FAST_LIGHT\n");
 
-			switch (i & LIGHTDEF_LIGHTTYPE_MASK)
+			switch (lightType)
 			{
 				case LIGHTDEF_USE_LIGHTMAP:
 					Q_strcat(extradefines, 1024, "#define USE_LIGHTMAP\n");
+					if (r_deluxeMapping->integer && !fastLight)
+						Q_strcat(extradefines, 1024, "#define USE_DELUXEMAP\n");
 					attribs |= ATTR_LIGHTCOORD | ATTR_LIGHTDIRECTION;
 					break;
 				case LIGHTDEF_USE_LIGHT_VECTOR:
@@ -1063,54 +1073,58 @@ void GLSL_InitGPUShaders(void)
 				default:
 					break;
 			}
-		}
 
-		if ((i & LIGHTDEF_USE_NORMALMAP) && r_normalMapping->integer)
-		{
-			Q_strcat(extradefines, 1024, "#define USE_NORMALMAP\n");
+			if (r_normalMapping->integer)
+			{
+				Q_strcat(extradefines, 1024, "#define USE_NORMALMAP\n");
 
-			if (r_normalMapping->integer == 2)
-				Q_strcat(extradefines, 1024, "#define USE_OREN_NAYAR\n");
+				if (r_normalMapping->integer == 2)
+					Q_strcat(extradefines, 1024, "#define USE_OREN_NAYAR\n");
 
-			if (r_normalMapping->integer == 3)
-				Q_strcat(extradefines, 1024, "#define USE_TRIACE_OREN_NAYAR\n");
+				if (r_normalMapping->integer == 3)
+					Q_strcat(extradefines, 1024, "#define USE_TRIACE_OREN_NAYAR\n");
 
 #ifdef USE_VERT_TANGENT_SPACE
-			Q_strcat(extradefines, 1024, "#define USE_VERT_TANGENT_SPACE\n");
-			attribs |= ATTR_TANGENT | ATTR_BITANGENT;
+				Q_strcat(extradefines, 1024, "#define USE_VERT_TANGENT_SPACE\n");
+				attribs |= ATTR_TANGENT;
 #endif
-		}
 
-		if ((i & LIGHTDEF_USE_SPECULARMAP) && r_specularMapping->integer)
-		{
-			Q_strcat(extradefines, 1024, "#define USE_SPECULARMAP\n");
-
-			switch (r_specularMapping->integer)
-			{
-				case 1:
-				default:
-					Q_strcat(extradefines, 1024, "#define USE_TRIACE\n");
-					break;
-
-				case 2:
-					Q_strcat(extradefines, 1024, "#define USE_BLINN\n");
-					break;
-
-				case 3:
-					Q_strcat(extradefines, 1024, "#define USE_COOK_TORRANCE\n");
-					break;
-
-				case 4:
-					Q_strcat(extradefines, 1024, "#define USE_TORRANCE_SPARROW\n");
-					break;
+				if ((i & LIGHTDEF_USE_PARALLAXMAP) && !(i & LIGHTDEF_ENTITY) && r_parallaxMapping->integer)
+					Q_strcat(extradefines, 1024, "#define USE_PARALLAXMAP\n");
 			}
+
+			if (r_specularMapping->integer)
+			{
+				Q_strcat(extradefines, 1024, "#define USE_SPECULARMAP\n");
+
+				switch (r_specularMapping->integer)
+				{
+					case 1:
+					default:
+						Q_strcat(extradefines, 1024, "#define USE_BLINN\n");
+						break;
+
+					case 2:
+						Q_strcat(extradefines, 1024, "#define USE_BLINN_FRESNEL\n");
+						break;
+
+					case 3:
+						Q_strcat(extradefines, 1024, "#define USE_MCAULEY\n");
+						break;
+
+					case 4:
+						Q_strcat(extradefines, 1024, "#define USE_GOTANDA\n");
+						break;
+
+					case 5:
+						Q_strcat(extradefines, 1024, "#define USE_LAZAROV\n");
+						break;
+				}
+			}
+
+			if (r_cubeMapping->integer)
+				Q_strcat(extradefines, 1024, "#define USE_CUBEMAP\n");
 		}
-
-		if ((i & LIGHTDEF_USE_DELUXEMAP) && r_deluxeMapping->integer)
-			Q_strcat(extradefines, 1024, "#define USE_DELUXEMAP\n");
-
-		if ((i & LIGHTDEF_USE_PARALLAXMAP) && !(i & LIGHTDEF_ENTITY) && r_parallaxMapping->integer)
-			Q_strcat(extradefines, 1024, "#define USE_PARALLAXMAP\n");
 
 		if (i & LIGHTDEF_USE_SHADOWMAP)
 		{
@@ -1134,9 +1148,9 @@ void GLSL_InitGPUShaders(void)
 			attribs |= ATTR_POSITION2 | ATTR_NORMAL2;
 
 #ifdef USE_VERT_TANGENT_SPACE
-			if (i & LIGHTDEF_USE_NORMALMAP && r_normalMapping->integer)
+			if (r_normalMapping->integer)
 			{
-				attribs |= ATTR_TANGENT2 | ATTR_BITANGENT2;
+				attribs |= ATTR_TANGENT2;
 			}
 #endif
 		}
@@ -1155,6 +1169,7 @@ void GLSL_InitGPUShaders(void)
 		GLSL_SetUniformInt(&tr.lightallShader[i], UNIFORM_DELUXEMAP,   TB_DELUXEMAP);
 		GLSL_SetUniformInt(&tr.lightallShader[i], UNIFORM_SPECULARMAP, TB_SPECULARMAP);
 		GLSL_SetUniformInt(&tr.lightallShader[i], UNIFORM_SHADOWMAP,   TB_SHADOWMAP);
+		GLSL_SetUniformInt(&tr.lightallShader[i], UNIFORM_CUBEMAP,     TB_CUBEMAP);
 		qglUseProgramObjectARB(0);
 
 		GLSL_FinishGPUShader(&tr.lightallShader[i]);
@@ -1289,7 +1304,8 @@ void GLSL_InitGPUShaders(void)
 	if (r_shadowFilter->integer >= 2)
 		Q_strcat(extradefines, 1024, "#define USE_SHADOW_FILTER2\n");
 
-	Q_strcat(extradefines, 1024, "#define USE_SHADOW_CASCADE\n");
+	if (r_shadowCascadeZFar->integer != 0)
+		Q_strcat(extradefines, 1024, "#define USE_SHADOW_CASCADE\n");
 
 	Q_strcat(extradefines, 1024, va("#define r_shadowMapSize %d\n", r_shadowMapSize->integer));
 	Q_strcat(extradefines, 1024, va("#define r_shadowCascadeZFar %f\n", r_shadowCascadeZFar->value));
@@ -1307,6 +1323,7 @@ void GLSL_InitGPUShaders(void)
 	GLSL_SetUniformInt(&tr.shadowmaskShader, UNIFORM_SHADOWMAP,  TB_SHADOWMAP);
 	GLSL_SetUniformInt(&tr.shadowmaskShader, UNIFORM_SHADOWMAP2, TB_SHADOWMAP2);
 	GLSL_SetUniformInt(&tr.shadowmaskShader, UNIFORM_SHADOWMAP3, TB_SHADOWMAP3);
+	GLSL_SetUniformInt(&tr.shadowmaskShader, UNIFORM_SHADOWMAP4, TB_SHADOWMAP4);
 	qglUseProgramObjectARB(0);
 
 	GLSL_FinishGPUShader(&tr.shadowmaskShader);
@@ -1361,6 +1378,26 @@ void GLSL_InitGPUShaders(void)
 		numEtcShaders++;
 	}
 
+#if 0
+	attribs = ATTR_POSITION | ATTR_TEXCOORD;
+	extradefines[0] = '\0';
+
+	if (!GLSL_InitGPUShader(&tr.testcubeShader, "testcube", attribs, qtrue, extradefines, qtrue, NULL, NULL))
+	{
+		ri.Error(ERR_FATAL, "Could not load testcube shader!");
+	}
+
+	GLSL_InitUniforms(&tr.testcubeShader);
+
+	qglUseProgramObjectARB(tr.testcubeShader.program);
+	GLSL_SetUniformInt(&tr.testcubeShader, UNIFORM_TEXTUREMAP, TB_COLORMAP);
+	qglUseProgramObjectARB(0);
+
+	GLSL_FinishGPUShader(&tr.testcubeShader);
+
+	numEtcShaders++;
+#endif
+
 
 	endTime = ri.Milliseconds();
 
@@ -1382,12 +1419,10 @@ void GLSL_ShutdownGPUShaders(void)
 	qglDisableVertexAttribArrayARB(ATTR_INDEX_NORMAL);
 #ifdef USE_VERT_TANGENT_SPACE
 	qglDisableVertexAttribArrayARB(ATTR_INDEX_TANGENT);
-	qglDisableVertexAttribArrayARB(ATTR_INDEX_BITANGENT);
 #endif
 	qglDisableVertexAttribArrayARB(ATTR_INDEX_NORMAL2);
 #ifdef USE_VERT_TANGENT_SPACE
 	qglDisableVertexAttribArrayARB(ATTR_INDEX_TANGENT2);
-	qglDisableVertexAttribArrayARB(ATTR_INDEX_BITANGENT2);
 #endif
 	qglDisableVertexAttribArrayARB(ATTR_INDEX_COLOR);
 	qglDisableVertexAttribArrayARB(ATTR_INDEX_LIGHTDIRECTION);
@@ -1547,20 +1582,6 @@ void GLSL_VertexAttribsState(uint32_t stateBits)
 			qglDisableVertexAttribArrayARB(ATTR_INDEX_TANGENT);
 		}
 	}
-
-	if(diff & ATTR_BITANGENT)
-	{
-		if(stateBits & ATTR_BITANGENT)
-		{
-			GLimp_LogComment("qglEnableVertexAttribArrayARB( ATTR_INDEX_BITANGENT )\n");
-			qglEnableVertexAttribArrayARB(ATTR_INDEX_BITANGENT);
-		}
-		else
-		{
-			GLimp_LogComment("qglDisableVertexAttribArrayARB( ATTR_INDEX_BITANGENT )\n");
-			qglDisableVertexAttribArrayARB(ATTR_INDEX_BITANGENT);
-		}
-	}
 #endif
 
 	if(diff & ATTR_COLOR)
@@ -1633,20 +1654,6 @@ void GLSL_VertexAttribsState(uint32_t stateBits)
 			qglDisableVertexAttribArrayARB(ATTR_INDEX_TANGENT2);
 		}
 	}
-
-	if(diff & ATTR_BITANGENT2)
-	{
-		if(stateBits & ATTR_BITANGENT2)
-		{
-			GLimp_LogComment("qglEnableVertexAttribArrayARB( ATTR_INDEX_BITANGENT2 )\n");
-			qglEnableVertexAttribArrayARB(ATTR_INDEX_BITANGENT2);
-		}
-		else
-		{
-			GLimp_LogComment("qglDisableVertexAttribArrayARB( ATTR_INDEX_BITANGENT2 )\n");
-			qglDisableVertexAttribArrayARB(ATTR_INDEX_BITANGENT2);
-		}
-	}
 #endif
 
 	glState.vertexAttribsState = stateBits;
@@ -1656,26 +1663,30 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 {
 	qboolean animated;
 	int newFrame, oldFrame;
+	VBO_t *vbo = glState.currentVBO;
 	
-	if(!glState.currentVBO)
+	if(!vbo)
 	{
 		ri.Error(ERR_FATAL, "GL_VertexAttribPointers: no VBO bound");
 		return;
 	}
 
 	// don't just call LogComment, or we will get a call to va() every frame!
-	GLimp_LogComment(va("--- GL_VertexAttribPointers( %s ) ---\n", glState.currentVBO->name));
+	if(r_logFile->integer)
+	{
+		GLimp_LogComment(va("--- GL_VertexAttribPointers( %s ) ---\n", vbo->name));
+	}
 
-	// position/normal/tangent/bitangent are always set in case of animation
+	// position/normal/tangent are always set in case of animation
 	oldFrame = glState.vertexAttribsOldFrame;
 	newFrame = glState.vertexAttribsNewFrame;
-	animated = (oldFrame != newFrame) && (glState.vertexAttribsInterpolation > 0.0f);
+	animated = glState.vertexAnimation;
 	
 	if((attribBits & ATTR_POSITION) && (!(glState.vertexAttribPointersSet & ATTR_POSITION) || animated))
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_POSITION )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_POSITION, 3, GL_FLOAT, 0, glState.currentVBO->stride_xyz, BUFFER_OFFSET(glState.currentVBO->ofs_xyz + newFrame * glState.currentVBO->size_xyz));
+		qglVertexAttribPointerARB(ATTR_INDEX_POSITION, 3, GL_FLOAT, 0, vbo->stride_xyz, BUFFER_OFFSET(vbo->ofs_xyz + newFrame * vbo->size_xyz));
 		glState.vertexAttribPointersSet |= ATTR_POSITION;
 	}
 
@@ -1683,7 +1694,7 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_TEXCOORD )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_TEXCOORD0, 2, GL_FLOAT, 0, glState.currentVBO->stride_st, BUFFER_OFFSET(glState.currentVBO->ofs_st));
+		qglVertexAttribPointerARB(ATTR_INDEX_TEXCOORD0, 2, GL_FLOAT, 0, vbo->stride_st, BUFFER_OFFSET(vbo->ofs_st));
 		glState.vertexAttribPointersSet |= ATTR_TEXCOORD;
 	}
 
@@ -1691,7 +1702,7 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_LIGHTCOORD )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_TEXCOORD1, 2, GL_FLOAT, 0, glState.currentVBO->stride_lightmap, BUFFER_OFFSET(glState.currentVBO->ofs_lightmap));
+		qglVertexAttribPointerARB(ATTR_INDEX_TEXCOORD1, 2, GL_FLOAT, 0, vbo->stride_lightmap, BUFFER_OFFSET(vbo->ofs_lightmap));
 		glState.vertexAttribPointersSet |= ATTR_LIGHTCOORD;
 	}
 
@@ -1699,7 +1710,7 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_NORMAL )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_NORMAL, 3, GL_FLOAT, 0, glState.currentVBO->stride_normal, BUFFER_OFFSET(glState.currentVBO->ofs_normal + newFrame * glState.currentVBO->size_normal));
+		qglVertexAttribPointerARB(ATTR_INDEX_NORMAL, 4, glRefConfig.packedNormalDataType, GL_TRUE, vbo->stride_normal, BUFFER_OFFSET(vbo->ofs_normal + newFrame * vbo->size_normal));
 		glState.vertexAttribPointersSet |= ATTR_NORMAL;
 	}
 
@@ -1708,16 +1719,8 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_TANGENT )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_TANGENT, 3, GL_FLOAT, 0, glState.currentVBO->stride_tangent, BUFFER_OFFSET(glState.currentVBO->ofs_tangent + newFrame * glState.currentVBO->size_normal)); // FIXME
+		qglVertexAttribPointerARB(ATTR_INDEX_TANGENT, 4, glRefConfig.packedNormalDataType, GL_TRUE, vbo->stride_tangent, BUFFER_OFFSET(vbo->ofs_tangent + newFrame * vbo->size_normal)); // FIXME
 		glState.vertexAttribPointersSet |= ATTR_TANGENT;
-	}
-
-	if((attribBits & ATTR_BITANGENT) && (!(glState.vertexAttribPointersSet & ATTR_BITANGENT) || animated))
-	{
-		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_BITANGENT )\n");
-
-		qglVertexAttribPointerARB(ATTR_INDEX_BITANGENT, 3, GL_FLOAT, 0, glState.currentVBO->stride_bitangent, BUFFER_OFFSET(glState.currentVBO->ofs_bitangent + newFrame * glState.currentVBO->size_normal)); // FIXME
-		glState.vertexAttribPointersSet |= ATTR_BITANGENT;
 	}
 #endif
 
@@ -1725,7 +1728,7 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_COLOR )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_COLOR, 4, GL_FLOAT, 0, glState.currentVBO->stride_vertexcolor, BUFFER_OFFSET(glState.currentVBO->ofs_vertexcolor));
+		qglVertexAttribPointerARB(ATTR_INDEX_COLOR, 4, GL_FLOAT, 0, vbo->stride_vertexcolor, BUFFER_OFFSET(vbo->ofs_vertexcolor));
 		glState.vertexAttribPointersSet |= ATTR_COLOR;
 	}
 
@@ -1733,7 +1736,7 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_LIGHTDIRECTION )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_LIGHTDIRECTION, 3, GL_FLOAT, 0, glState.currentVBO->stride_lightdir, BUFFER_OFFSET(glState.currentVBO->ofs_lightdir));
+		qglVertexAttribPointerARB(ATTR_INDEX_LIGHTDIRECTION, 4, glRefConfig.packedNormalDataType, GL_TRUE, vbo->stride_lightdir, BUFFER_OFFSET(vbo->ofs_lightdir));
 		glState.vertexAttribPointersSet |= ATTR_LIGHTDIRECTION;
 	}
 
@@ -1741,7 +1744,7 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_POSITION2 )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_POSITION2, 3, GL_FLOAT, 0, glState.currentVBO->stride_xyz, BUFFER_OFFSET(glState.currentVBO->ofs_xyz + oldFrame * glState.currentVBO->size_xyz));
+		qglVertexAttribPointerARB(ATTR_INDEX_POSITION2, 3, GL_FLOAT, 0, vbo->stride_xyz, BUFFER_OFFSET(vbo->ofs_xyz + oldFrame * vbo->size_xyz));
 		glState.vertexAttribPointersSet |= ATTR_POSITION2;
 	}
 
@@ -1749,7 +1752,7 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_NORMAL2 )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_NORMAL2, 3, GL_FLOAT, 0, glState.currentVBO->stride_normal, BUFFER_OFFSET(glState.currentVBO->ofs_normal + oldFrame * glState.currentVBO->size_normal));
+		qglVertexAttribPointerARB(ATTR_INDEX_NORMAL2, 4, glRefConfig.packedNormalDataType, GL_TRUE, vbo->stride_normal, BUFFER_OFFSET(vbo->ofs_normal + oldFrame * vbo->size_normal));
 		glState.vertexAttribPointersSet |= ATTR_NORMAL2;
 	}
 
@@ -1758,16 +1761,8 @@ void GLSL_VertexAttribPointers(uint32_t attribBits)
 	{
 		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_TANGENT2 )\n");
 
-		qglVertexAttribPointerARB(ATTR_INDEX_TANGENT2, 3, GL_FLOAT, 0, glState.currentVBO->stride_tangent, BUFFER_OFFSET(glState.currentVBO->ofs_tangent + oldFrame * glState.currentVBO->size_normal)); // FIXME
+		qglVertexAttribPointerARB(ATTR_INDEX_TANGENT2, 4, glRefConfig.packedNormalDataType, GL_TRUE, vbo->stride_tangent, BUFFER_OFFSET(vbo->ofs_tangent + oldFrame * vbo->size_normal)); // FIXME
 		glState.vertexAttribPointersSet |= ATTR_TANGENT2;
-	}
-
-	if((attribBits & ATTR_BITANGENT2) && (!(glState.vertexAttribPointersSet & ATTR_BITANGENT2) || animated))
-	{
-		GLimp_LogComment("qglVertexAttribPointerARB( ATTR_INDEX_BITANGENT2 )\n");
-
-		qglVertexAttribPointerARB(ATTR_INDEX_BITANGENT2, 3, GL_FLOAT, 0, glState.currentVBO->stride_bitangent, BUFFER_OFFSET(glState.currentVBO->ofs_bitangent + oldFrame * glState.currentVBO->size_normal)); // FIXME
-		glState.vertexAttribPointersSet |= ATTR_BITANGENT2;
 	}
 #endif
 
@@ -1802,7 +1797,6 @@ shaderProgram_t *GLSL_GetGenericShaderProgram(int stage)
 	{
 		case AGEN_LIGHTING_SPECULAR:
 		case AGEN_PORTAL:
-		case AGEN_FRESNEL:
 			shaderAttribs |= GENERICDEF_USE_RGBAGEN;
 			break;
 		default:
@@ -1819,7 +1813,7 @@ shaderProgram_t *GLSL_GetGenericShaderProgram(int stage)
 		shaderAttribs |= GENERICDEF_USE_DEFORM_VERTEXES;
 	}
 
-	if (glState.vertexAttribsInterpolation > 0.0f && backEnd.currentEntity && backEnd.currentEntity != &tr.worldEntity)
+	if (glState.vertexAnimation)
 	{
 		shaderAttribs |= GENERICDEF_USE_VERTEX_ANIMATION;
 	}
