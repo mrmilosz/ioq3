@@ -332,8 +332,8 @@ static void UI_PositionRotatedEntityOnTag( refEntity_t *entity, const refEntity_
 	}
 
 	// cast away const because of compiler problems
-	MatrixMultiply( entity->axis, ((refEntity_t *)parent)->axis, tempAxis );
-	MatrixMultiply( lerped.axis, tempAxis, entity->axis );
+	MatrixMultiply( entity->axis, lerped.axis, tempAxis );
+	MatrixMultiply( tempAxis, ((refEntity_t *)parent)->axis, entity->axis );
 }
 
 
@@ -845,10 +845,6 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 		angles[YAW] = 0;
 		angles[PITCH] = 0;
 		angles[ROLL] = UI_MachinegunSpinAngle( pi );
-		if( pi->realWeapon == WP_GAUNTLET || pi->realWeapon == WP_BFG ) {
-			angles[PITCH] = angles[ROLL];
-			angles[ROLL] = 0;
-		}
 		AnglesToAxis( angles, barrel.axis );
 
 		UI_PositionRotatedEntityOnTag( &barrel, &gun, pi->weaponModel, "tag_barrel");
@@ -1001,7 +997,7 @@ static qboolean UI_ParseAnimationFile( const char *filename, animation_t *animat
 			break;
 		}
 
-		Com_Printf( "unknown token '%s' is %s\n", token, filename );
+		Com_Printf( "unknown token '%s' in %s\n", token, filename );
 	}
 
 	// read information for each frame

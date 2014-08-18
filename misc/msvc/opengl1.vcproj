@@ -61,6 +61,7 @@
 				WarningLevel="4"
 				SuppressStartupBanner="true"
 				CompileAs="1"
+				FloatingPointModel="2"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -161,6 +162,7 @@
 				SuppressStartupBanner="true"
 				DebugInformationFormat="4"
 				CompileAs="1"
+				FloatingPointModel="2"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -263,6 +265,7 @@
 				WarningLevel="4"
 				SuppressStartupBanner="true"
 				CompileAs="1"
+				FloatingPointModel="2"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -361,6 +364,7 @@
 				SuppressStartupBanner="true"
 				DebugInformationFormat="4"
 				CompileAs="1"
+				FloatingPointModel="2"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -609,23 +613,23 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\code\opengl1\tr_extramath.h"
+				RelativePath="..\..\code\renderergl1\tr_extramath.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\code\opengl1\tr_extratypes.h"
+				RelativePath="..\..\code\renderergl1\tr_extratypes.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\code\opengl1\tr_fbo.h"
+				RelativePath="..\..\code\renderergl1\tr_fbo.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\code\opengl1\tr_local.h"
+				RelativePath="..\..\code\renderergl1\tr_local.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\code\opengl1\tr_postprocess.h"
+				RelativePath="..\..\code\renderergl1\tr_postprocess.h"
 				>
 			</File>
 			<File

@@ -294,13 +294,11 @@ void R_CalcTangentSpaceFast(vec3_t tangent, vec3_t bitangent, vec3_t normal,
 /*
 http://www.terathon.com/code/tangent.html
 */
-void R_CalcTBN(vec3_t tangent, vec3_t bitangent, vec3_t normal,
-						const vec3_t v1, const vec3_t v2, const vec3_t v3, const vec2_t w1, const vec2_t w2, const vec2_t w3)
+void R_CalcTexDirs(vec3_t sdir, vec3_t tdir, const vec3_t v1, const vec3_t v2,
+				   const vec3_t v3, const vec2_t w1, const vec2_t w2, const vec2_t w3)
 {
-	vec3_t          u, v;
 	float			x1, x2, y1, y2, z1, z2;
-	float			s1, s2, t1, t2;
-	float			r, dot;
+	float			s1, s2, t1, t2, r;
 
 	x1 = v2[0] - v1[0];
 	x2 = v3[0] - v1[0];
@@ -316,24 +314,27 @@ void R_CalcTBN(vec3_t tangent, vec3_t bitangent, vec3_t normal,
 
 	r = 1.0f / (s1 * t2 - s2 * t1);
 
-	VectorSet(tangent, (t2 * x1 - t1 * x2) * r, (t2 * y1 - t1 * y2) * r, (t2 * z1 - t1 * z2) * r);
-	VectorSet(bitangent, (s1 * x2 - s2 * x1) * r, (s1 * y2 - s2 * y1) * r, (s1 * z2 - s2 * z1) * r);
+	VectorSet(sdir, (t2 * x1 - t1 * x2) * r, (t2 * y1 - t1 * y2) * r, (t2 * z1 - t1 * z2) * r);
+	VectorSet(tdir, (s1 * x2 - s2 * x1) * r, (s1 * y2 - s2 * y1) * r, (s1 * z2 - s2 * z1) * r);
+}
 
-	// compute the face normal based on vertex points
-	VectorSubtract(v3, v1, u);
-	VectorSubtract(v2, v1, v);
-	CrossProduct(u, v, normal);
-
-	VectorNormalize(normal);
+void R_CalcTbnFromNormalAndTexDirs(vec3_t tangent, vec3_t bitangent, vec3_t normal, vec3_t sdir, vec3_t tdir)
+{
+	vec3_t n_cross_t;
+	vec_t n_dot_t, handedness;
 
 	// Gram-Schmidt orthogonalize
-	//tangent[a] = (t - n * Dot(n, t)).Normalize();
-	dot = DotProduct(normal, tangent);
-	VectorMA(tangent, -dot, normal, tangent);
+	n_dot_t = DotProduct(normal, sdir);
+	VectorMA(sdir, -n_dot_t, normal, tangent);
 	VectorNormalize(tangent);
 
-	// B=NxT
-	//CrossProduct(normal, tangent, bitangent);
+	// Calculate handedness
+	CrossProduct(normal, sdir, n_cross_t);
+	handedness = (DotProduct(n_cross_t, tdir) < 0.0f) ? -1.0f : 1.0f;
+
+	// Calculate bitangent
+	CrossProduct(normal, tangent, bitangent);
+	VectorScale(bitangent, handedness, bitangent);
 }
 
 void R_CalcTBN2(vec3_t tangent, vec3_t bitangent, vec3_t normal,
@@ -454,6 +455,8 @@ qboolean R_CalcTangentVectors(srfVert_t * dv[3])
 	/* do each vertex */
 	for(i = 0; i < 3; i++)
 	{
+		vec3_t bitangent, nxt;
+
 		// calculate s tangent vector
 		s = dv[i]->st[0] + 10.0f;
 		t = dv[i]->st[1];
@@ -475,12 +478,16 @@ qboolean R_CalcTangentVectors(srfVert_t * dv[3])
 		bary[1] = ((dv[2]->st[0] - s) * (dv[0]->st[1] - t) - (dv[0]->st[0] - s) * (dv[2]->st[1] - t)) / bb;
 		bary[2] = ((dv[0]->st[0] - s) * (dv[1]->st[1] - t) - (dv[1]->st[0] - s) * (dv[0]->st[1] - t)) / bb;
 
-		dv[i]->bitangent[0] = bary[0] * dv[0]->xyz[0] + bary[1] * dv[1]->xyz[0] + bary[2] * dv[2]->xyz[0];
-		dv[i]->bitangent[1] = bary[0] * dv[0]->xyz[1] + bary[1] * dv[1]->xyz[1] + bary[2] * dv[2]->xyz[1];
-		dv[i]->bitangent[2] = bary[0] * dv[0]->xyz[2] + bary[1] * dv[1]->xyz[2] + bary[2] * dv[2]->xyz[2];
+		bitangent[0] = bary[0] * dv[0]->xyz[0] + bary[1] * dv[1]->xyz[0] + bary[2] * dv[2]->xyz[0];
+		bitangent[1] = bary[0] * dv[0]->xyz[1] + bary[1] * dv[1]->xyz[1] + bary[2] * dv[2]->xyz[1];
+		bitangent[2] = bary[0] * dv[0]->xyz[2] + bary[1] * dv[1]->xyz[2] + bary[2] * dv[2]->xyz[2];
 
-		VectorSubtract(dv[i]->bitangent, dv[i]->xyz, dv[i]->bitangent);
-		VectorNormalize(dv[i]->bitangent);
+		VectorSubtract(bitangent, dv[i]->xyz, bitangent);
+		VectorNormalize(bitangent);
+
+		// store bitangent handedness
+		CrossProduct(dv[i]->normal, dv[i]->tangent, nxt);
+		dv[i]->tangent[3] = (DotProduct(nxt, bitangent) < 0.0f) ? -1.0f : 1.0f;
 
 		// debug code
 		//% Sys_FPrintf( SYS_VRB, "%d S: (%f %f %f) T: (%f %f %f)\n", i,
@@ -490,99 +497,6 @@ qboolean R_CalcTangentVectors(srfVert_t * dv[3])
 	return qtrue;
 }
 #endif
-
-
-/*
-=================
-R_FindSurfaceTriangleWithEdge
-
-Recoded from Q2E
-=================
-*/
-static int R_FindSurfaceTriangleWithEdge(int numTriangles, srfTriangle_t * triangles, int start, int end, int ignore)
-{
-	srfTriangle_t  *tri;
-	int             count, match;
-	int             i;
-
-	count = 0;
-	match = -1;
-
-	for(i = 0, tri = triangles; i < numTriangles; i++, tri++)
-	{
-		if((tri->indexes[0] == start && tri->indexes[1] == end) ||
-		   (tri->indexes[1] == start && tri->indexes[2] == end) || (tri->indexes[2] == start && tri->indexes[0] == end))
-		{
-			if(i != ignore)
-			{
-				match = i;
-			}
-
-			count++;
-		}
-		else if((tri->indexes[1] == start && tri->indexes[0] == end) ||
-				(tri->indexes[2] == start && tri->indexes[1] == end) || (tri->indexes[0] == start && tri->indexes[2] == end))
-		{
-			count++;
-		}
-	}
-
-	// detect edges shared by three triangles and make them seams
-	if(count > 2)
-	{
-		match = -1;
-	}
-
-	return match;
-}
-
-
-/*
-=================
-R_CalcSurfaceTriangleNeighbors
-
-Recoded from Q2E
-=================
-*/
-void R_CalcSurfaceTriangleNeighbors(int numTriangles, srfTriangle_t * triangles)
-{
-	int             i;
-	srfTriangle_t  *tri;
-
-	for(i = 0, tri = triangles; i < numTriangles; i++, tri++)
-	{
-		tri->neighbors[0] = R_FindSurfaceTriangleWithEdge(numTriangles, triangles, tri->indexes[1], tri->indexes[0], i);
-		tri->neighbors[1] = R_FindSurfaceTriangleWithEdge(numTriangles, triangles, tri->indexes[2], tri->indexes[1], i);
-		tri->neighbors[2] = R_FindSurfaceTriangleWithEdge(numTriangles, triangles, tri->indexes[0], tri->indexes[2], i);
-	}
-}
-
-/*
-=================
-R_CalcSurfaceTrianglePlanes
-=================
-*/
-void R_CalcSurfaceTrianglePlanes(int numTriangles, srfTriangle_t * triangles, srfVert_t * verts)
-{
-	int             i;
-	srfTriangle_t  *tri;
-
-	for(i = 0, tri = triangles; i < numTriangles; i++, tri++)
-	{
-		float          *v1, *v2, *v3;
-		vec3_t          d1, d2;
-
-		v1 = verts[tri->indexes[0]].xyz;
-		v2 = verts[tri->indexes[1]].xyz;
-		v3 = verts[tri->indexes[2]].xyz;
-
-		VectorSubtract(v2, v1, d1);
-		VectorSubtract(v3, v1, d2);
-
-		CrossProduct(d2, d1, tri->plane);
-		tri->plane[3] = DotProduct(tri->plane, v1);
-	}
-}
 
 
 /*
@@ -927,7 +841,7 @@ void R_RotateForEntity( const trRefEntity_t *ent, const viewParms_t *viewParms,
 	glMatrix[11] = 0;
 	glMatrix[15] = 1;
 
-	Matrix16Copy(glMatrix, or->transformMatrix);
+	Mat4Copy(glMatrix, or->transformMatrix);
 	myGlMultMatrix( glMatrix, viewParms->world.modelMatrix, or->modelMatrix );
 
 	// calculate the viewer origin in the model's space
@@ -1365,7 +1279,7 @@ R_PlaneForSurface
 =============
 */
 void R_PlaneForSurface (surfaceType_t *surfType, cplane_t *plane) {
-	srfTriangles_t	*tri;
+	srfBspSurface_t	*tri;
 	srfPoly_t		*poly;
 	srfVert_t		*v1, *v2, *v3;
 	vec4_t			plane4;
@@ -1377,13 +1291,13 @@ void R_PlaneForSurface (surfaceType_t *surfType, cplane_t *plane) {
 	}
 	switch (*surfType) {
 	case SF_FACE:
-		*plane = ((srfSurfaceFace_t *)surfType)->plane;
+		*plane = ((srfBspSurface_t *)surfType)->cullPlane;
 		return;
 	case SF_TRIANGLES:
-		tri = (srfTriangles_t *)surfType;
-		v1 = tri->verts + tri->triangles[0].indexes[0];
-		v2 = tri->verts + tri->triangles[0].indexes[1];
-		v3 = tri->verts + tri->triangles[0].indexes[2];
+		tri = (srfBspSurface_t *)surfType;
+		v1 = tri->verts + tri->indexes[0];
+		v2 = tri->verts + tri->indexes[1];
+		v3 = tri->verts + tri->indexes[2];
 		PlaneFromPoints( plane4, v1->xyz, v2->xyz, v3->xyz );
 		VectorCopy( plane4, plane->normal ); 
 		plane->dist = plane4[3];
@@ -1607,7 +1521,7 @@ static qboolean SurfIsOffscreen( const drawSurf_t *drawSurf, vec4_t clipDest[128
 	R_RotateForViewer();
 
 	R_DecomposeSort( drawSurf->sort, &entityNum, &shader, &fogNum, &dlighted, &pshadowed );
-	RB_BeginSurface( shader, fogNum );
+	RB_BeginSurface( shader, fogNum, drawSurf->cubemapIndex);
 	rb_surfaceTable[ *drawSurf->surface ]( drawSurf->surface );
 
 	assert( tess.numVertexes < 128 );
@@ -1649,7 +1563,8 @@ static qboolean SurfIsOffscreen( const drawSurf_t *drawSurf, vec4_t clipDest[128
 
 	for ( i = 0; i < tess.numIndexes; i += 3 )
 	{
-		vec3_t normal;
+		vec3_t normal, tNormal;
+
 		float len;
 
 		VectorSubtract( tess.xyz[tess.indexes[i]], tr.viewParms.or.origin, normal );
@@ -1660,7 +1575,9 @@ static qboolean SurfIsOffscreen( const drawSurf_t *drawSurf, vec4_t clipDest[128
 			shortest = len;
 		}
 
-		if ( DotProduct( normal, tess.normal[tess.indexes[i]] ) >= 0 )
+		R_VboUnpackNormal(tNormal, tess.normal[tess.indexes[i]]);
+
+		if ( DotProduct( normal, tNormal ) >= 0 )
 		{
 			numTriangles--;
 		}
@@ -1724,6 +1641,9 @@ qboolean R_MirrorViewBySurface (drawSurf_t *drawSurf, int entityNum) {
 		newParms.pvsOrigin, &newParms.isMirror ) ) {
 		return qfalse;		// bad portal, no portalentity
 	}
+
+	if (newParms.isMirror)
+		newParms.flags |= VPF_NOVIEWMODEL;
 
 	R_MirrorPoint (oldParms.or.origin, &surface, &camera, newParms.or.origin );
 
@@ -1844,7 +1764,7 @@ R_AddDrawSurf
 =================
 */
 void R_AddDrawSurf( surfaceType_t *surface, shader_t *shader, 
-				   int fogIndex, int dlightMap, int pshadowMap ) {
+				   int fogIndex, int dlightMap, int pshadowMap, int cubemap ) {
 	int			index;
 
 	// instead of checking for overflow, we just mask the index
@@ -1855,6 +1775,7 @@ void R_AddDrawSurf( surfaceType_t *surface, shader_t *shader,
 	tr.refdef.drawSurfs[index].sort = (shader->sortedIndex << QSORT_SHADERNUM_SHIFT) 
 		| tr.shiftedEntityNum | ( fogIndex << QSORT_FOGNUM_SHIFT ) 
 		| ((int)pshadowMap << QSORT_PSHADOW_SHIFT) | (int)dlightMap;
+	tr.refdef.drawSurfs[index].cubemapIndex = cubemap;
 	tr.refdef.drawSurfs[index].surface = surface;
 	tr.refdef.numDrawSurfs++;
 }
@@ -1958,8 +1879,7 @@ static void R_AddEntitySurface (int entityNum)
 	// we don't want the hacked weapon position showing in 
 	// mirrors, because the true body position will already be drawn
 	//
-	if ( (ent->e.renderfx & RF_FIRST_PERSON) && (tr.viewParms.isPortal 
-	      || (tr.viewParms.flags & (VPF_SHADOWMAP | VPF_DEPTHSHADOW))) ) {
+	if ( (ent->e.renderfx & RF_FIRST_PERSON) && (tr.viewParms.flags & VPF_NOVIEWMODEL)) {
 		return;
 	}
 
@@ -1979,7 +1899,7 @@ static void R_AddEntitySurface (int entityNum)
 			return;
 		}
 		shader = R_GetShaderByHandle( ent->e.customShader );
-		R_AddDrawSurf( &entitySurface, shader, R_SpriteFogNum( ent ), 0, 0 );
+		R_AddDrawSurf( &entitySurface, shader, R_SpriteFogNum( ent ), 0, 0, 0 /*cubeMap*/ );
 		break;
 
 	case RT_MODEL:
@@ -1988,14 +1908,11 @@ static void R_AddEntitySurface (int entityNum)
 
 		tr.currentModel = R_GetModelByHandle( ent->e.hModel );
 		if (!tr.currentModel) {
-			R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0, 0 );
+			R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0, 0, 0 /*cubeMap*/  );
 		} else {
 			switch ( tr.currentModel->type ) {
 			case MOD_MESH:
 				R_AddMD3Surfaces( ent );
-				break;
-			case MOD_MD4:
-				R_AddAnimSurfaces( ent );
 				break;
 			case MOD_MDR:
 				R_MDRAddAnimSurfaces( ent );
@@ -2010,7 +1927,7 @@ static void R_AddEntitySurface (int entityNum)
 				if ( (ent->e.renderfx & RF_THIRD_PERSON) && !tr.viewParms.isPortal) {
 					break;
 				}
-				R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0, 0 );
+				R_AddDrawSurf( &entitySurface, tr.defaultShader, 0, 0, 0, 0 );
 				break;
 			default:
 				ri.Error( ERR_DROP, "R_AddEntitySurfaces: Bad modeltype" );
@@ -2186,7 +2103,7 @@ void R_RenderDlightCubemaps(const refdef_t *fd)
 		shadowParms.fovX = 90;
 		shadowParms.fovY = 90;
 
-		shadowParms.flags = VPF_SHADOWMAP | VPF_DEPTHSHADOW;
+		shadowParms.flags = VPF_SHADOWMAP | VPF_DEPTHSHADOW | VPF_NOVIEWMODEL;
 		shadowParms.zFar = tr.refdef.dlights[i].radius;
 
 		VectorCopy( tr.refdef.dlights[i].origin, shadowParms.or.origin );
@@ -2283,12 +2200,6 @@ void R_RenderPshadowMaps(const refdef_t *fd)
 				}
 				break;
 
-				case MOD_MD4:
-				{
-					// FIXME: actually calculate the radius and bounds, this is a horrible hack
-					radius = r_pshadowDist->value / 2.0f;
-				}
-				break;
 				case MOD_MDR:
 				{
 					// FIXME: never actually tested this
@@ -2490,7 +2401,7 @@ void R_RenderPshadowMaps(const refdef_t *fd)
 		if (glRefConfig.framebufferObject)
 			shadowParms.targetFbo = tr.pshadowFbos[i];
 
-		shadowParms.flags = VPF_SHADOWMAP | VPF_DEPTHSHADOW;
+		shadowParms.flags = VPF_SHADOWMAP | VPF_DEPTHSHADOW | VPF_NOVIEWMODEL;
 		shadowParms.zFar = shadow->lightRadius;
 
 		VectorCopy(shadow->lightOrigin, shadowParms.or.origin);
@@ -2661,14 +2572,16 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 			//splitZFar  = 3072;
 			break;
 	}
-			
-	VectorCopy(fd->vieworg, lightOrigin);
-
+	
+	if (level != 3)
+		VectorCopy(fd->vieworg, lightOrigin);
+	else
+		VectorCopy(tr.world->lightGridOrigin, lightOrigin);
 
 	// Make up a projection
 	VectorScale(lightDir, -1.0f, lightViewAxis[0]);
 
-	if (lightViewIndependentOfCameraView)
+	if (level == 3 || lightViewIndependentOfCameraView)
 	{
 		// Use world up as light view up
 		VectorSet(lightViewAxis[2], 0, 0, 1);
@@ -2688,7 +2601,7 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 	// Check if too close to parallel to light direction
 	if (abs(DotProduct(lightViewAxis[2], lightViewAxis[0])) > 0.9f)
 	{
-		if (lightViewIndependentOfCameraView)
+		if (level == 3 || lightViewIndependentOfCameraView)
 		{
 			// Use world left as light view up
 			VectorSet(lightViewAxis[2], 0, 1, 0);
@@ -2713,7 +2626,7 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 
 	// Create bounds for light projection using slice of view projection
 	{
-		matrix_t lightViewMatrix;
+		mat4_t lightViewMatrix;
 		vec4_t point, base, lightViewPoint;
 		float lx, ly;
 
@@ -2721,60 +2634,121 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 		point[3] = 1;
 		lightViewPoint[3] = 1;
 
-		Matrix16View(lightViewAxis, lightOrigin, lightViewMatrix);
+		Mat4View(lightViewAxis, lightOrigin, lightViewMatrix);
 
 		ClearBounds(lightviewBounds[0], lightviewBounds[1]);
 
-		// add view near plane
-		lx = splitZNear * tan(fd->fov_x * M_PI / 360.0f);
-		ly = splitZNear * tan(fd->fov_y * M_PI / 360.0f);
-		VectorMA(fd->vieworg, splitZNear, fd->viewaxis[0], base);
+		if (level != 3)
+		{
+			// add view near plane
+			lx = splitZNear * tan(fd->fov_x * M_PI / 360.0f);
+			ly = splitZNear * tan(fd->fov_y * M_PI / 360.0f);
+			VectorMA(fd->vieworg, splitZNear, fd->viewaxis[0], base);
 
-		VectorMA(base,   lx, fd->viewaxis[1], point);
-		VectorMA(point,  ly, fd->viewaxis[2], point);
-		Matrix16Transform(lightViewMatrix, point, lightViewPoint);
-		AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+			VectorMA(base,   lx, fd->viewaxis[1], point);
+			VectorMA(point,  ly, fd->viewaxis[2], point);
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
 
-		VectorMA(base,  -lx, fd->viewaxis[1], point);
-		VectorMA(point,  ly, fd->viewaxis[2], point);
-		Matrix16Transform(lightViewMatrix, point, lightViewPoint);
-		AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+			VectorMA(base,  -lx, fd->viewaxis[1], point);
+			VectorMA(point,  ly, fd->viewaxis[2], point);
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
 
-		VectorMA(base,   lx, fd->viewaxis[1], point);
-		VectorMA(point, -ly, fd->viewaxis[2], point);
-		Matrix16Transform(lightViewMatrix, point, lightViewPoint);
-		AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+			VectorMA(base,   lx, fd->viewaxis[1], point);
+			VectorMA(point, -ly, fd->viewaxis[2], point);
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
 
-		VectorMA(base,  -lx, fd->viewaxis[1], point);
-		VectorMA(point, -ly, fd->viewaxis[2], point);
-		Matrix16Transform(lightViewMatrix, point, lightViewPoint);
-		AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
-		
+			VectorMA(base,  -lx, fd->viewaxis[1], point);
+			VectorMA(point, -ly, fd->viewaxis[2], point);
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+			
 
-		// add view far plane
-		lx = splitZFar * tan(fd->fov_x * M_PI / 360.0f);
-		ly = splitZFar * tan(fd->fov_y * M_PI / 360.0f);
-		VectorMA(fd->vieworg, splitZFar, fd->viewaxis[0], base);
+			// add view far plane
+			lx = splitZFar * tan(fd->fov_x * M_PI / 360.0f);
+			ly = splitZFar * tan(fd->fov_y * M_PI / 360.0f);
+			VectorMA(fd->vieworg, splitZFar, fd->viewaxis[0], base);
 
-		VectorMA(base,   lx, fd->viewaxis[1], point);
-		VectorMA(point,  ly, fd->viewaxis[2], point);
-		Matrix16Transform(lightViewMatrix, point, lightViewPoint);
-		AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+			VectorMA(base,   lx, fd->viewaxis[1], point);
+			VectorMA(point,  ly, fd->viewaxis[2], point);
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
 
-		VectorMA(base,  -lx, fd->viewaxis[1], point);
-		VectorMA(point,  ly, fd->viewaxis[2], point);
-		Matrix16Transform(lightViewMatrix, point, lightViewPoint);
-		AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+			VectorMA(base,  -lx, fd->viewaxis[1], point);
+			VectorMA(point,  ly, fd->viewaxis[2], point);
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
 
-		VectorMA(base,   lx, fd->viewaxis[1], point);
-		VectorMA(point, -ly, fd->viewaxis[2], point);
-		Matrix16Transform(lightViewMatrix, point, lightViewPoint);
-		AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+			VectorMA(base,   lx, fd->viewaxis[1], point);
+			VectorMA(point, -ly, fd->viewaxis[2], point);
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
 
-		VectorMA(base,  -lx, fd->viewaxis[1], point);
-		VectorMA(point, -ly, fd->viewaxis[2], point);
-		Matrix16Transform(lightViewMatrix, point, lightViewPoint);
-		AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+			VectorMA(base,  -lx, fd->viewaxis[1], point);
+			VectorMA(point, -ly, fd->viewaxis[2], point);
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+		}
+		else
+		{
+			// use light grid size as level size
+			// FIXME: could be tighter
+			vec3_t bounds;
+
+			bounds[0] = tr.world->lightGridSize[0] * tr.world->lightGridBounds[0];
+			bounds[1] = tr.world->lightGridSize[1] * tr.world->lightGridBounds[1];
+			bounds[2] = tr.world->lightGridSize[2] * tr.world->lightGridBounds[2];
+
+			point[0] = tr.world->lightGridOrigin[0];
+			point[1] = tr.world->lightGridOrigin[1];
+			point[2] = tr.world->lightGridOrigin[2];
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+
+			point[0] = tr.world->lightGridOrigin[0] + bounds[0];
+			point[1] = tr.world->lightGridOrigin[1];
+			point[2] = tr.world->lightGridOrigin[2];
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+
+			point[0] = tr.world->lightGridOrigin[0];
+			point[1] = tr.world->lightGridOrigin[1] + bounds[1];
+			point[2] = tr.world->lightGridOrigin[2];
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+
+			point[0] = tr.world->lightGridOrigin[0] + bounds[0];
+			point[1] = tr.world->lightGridOrigin[1] + bounds[1];
+			point[2] = tr.world->lightGridOrigin[2];
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+
+			point[0] = tr.world->lightGridOrigin[0];
+			point[1] = tr.world->lightGridOrigin[1];
+			point[2] = tr.world->lightGridOrigin[2] + bounds[2];
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+
+			point[0] = tr.world->lightGridOrigin[0] + bounds[0];
+			point[1] = tr.world->lightGridOrigin[1];
+			point[2] = tr.world->lightGridOrigin[2] + bounds[2];
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+
+			point[0] = tr.world->lightGridOrigin[0];
+			point[1] = tr.world->lightGridOrigin[1] + bounds[1];
+			point[2] = tr.world->lightGridOrigin[2] + bounds[2];
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+
+			point[0] = tr.world->lightGridOrigin[0] + bounds[0];
+			point[1] = tr.world->lightGridOrigin[1] + bounds[1];
+			point[2] = tr.world->lightGridOrigin[2] + bounds[2];
+			Mat4Transform(lightViewMatrix, point, lightViewPoint);
+			AddPointToBounds(lightViewPoint, lightviewBounds[0], lightviewBounds[1]);
+		}
 
 		if (!glRefConfig.depthClamp)
 			lightviewBounds[0][0] = lightviewBounds[1][0] - 8192;
@@ -2804,10 +2778,9 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 			VectorScale(lightviewBounds[1], worldUnitsPerTexel, lightviewBounds[1]);
 		}
 
-		//ri.Printf(PRINT_ALL, "znear %f zfar %f\n", lightviewBounds[0][0], lightviewBounds[1][0]);		
-		//ri.Printf(PRINT_ALL, "fovx %f fovy %f xmin %f xmax %f ymin %f ymax %f\n", fd->fov_x, fd->fov_y, xmin, xmax, ymin, ymax);
+		//ri.Printf(PRINT_ALL, "level %d znear %f zfar %f\n", level, lightviewBounds[0][0], lightviewBounds[1][0]);		
+		//ri.Printf(PRINT_ALL, "xmin %f xmax %f ymin %f ymax %f\n", lightviewBounds[0][1], lightviewBounds[1][1], -lightviewBounds[1][2], -lightviewBounds[0][2]);
 	}
-
 
 	{
 		int firstDrawSurf;
@@ -2835,7 +2808,7 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 		if (glRefConfig.framebufferObject)
 			shadowParms.targetFbo = tr.sunShadowFbo[level];
 
-		shadowParms.flags = VPF_DEPTHSHADOW | VPF_DEPTHCLAMP | VPF_ORTHOGRAPHIC;
+		shadowParms.flags = VPF_DEPTHSHADOW | VPF_DEPTHCLAMP | VPF_ORTHOGRAPHIC | VPF_NOVIEWMODEL;
 		shadowParms.zFar = lightviewBounds[1][0];
 
 		VectorCopy(lightOrigin, shadowParms.or.origin);
@@ -2871,6 +2844,135 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 			R_SortDrawSurfs( tr.refdef.drawSurfs + firstDrawSurf, tr.refdef.numDrawSurfs - firstDrawSurf );
 		}
 
-		Matrix16Multiply(tr.viewParms.projectionMatrix, tr.viewParms.world.modelMatrix, tr.refdef.sunShadowMvp[level]);
+		Mat4Multiply(tr.viewParms.projectionMatrix, tr.viewParms.world.modelMatrix, tr.refdef.sunShadowMvp[level]);
+	}
+}
+
+void R_RenderCubemapSide( int cubemapIndex, int cubemapSide, qboolean subscene )
+{
+	refdef_t refdef;
+	viewParms_t	parms;
+	float oldColorScale = tr.refdef.colorScale;
+
+	memset( &refdef, 0, sizeof( refdef ) );
+	refdef.rdflags = 0;
+	VectorCopy(tr.cubemapOrigins[cubemapIndex], refdef.vieworg);
+
+	switch(cubemapSide)
+	{
+		case 0:
+			// -X
+			VectorSet( refdef.viewaxis[0], -1,  0,  0);
+			VectorSet( refdef.viewaxis[1],  0,  0, -1);
+			VectorSet( refdef.viewaxis[2],  0,  1,  0);
+			break;
+		case 1: 
+			// +X
+			VectorSet( refdef.viewaxis[0],  1,  0,  0);
+			VectorSet( refdef.viewaxis[1],  0,  0,  1);
+			VectorSet( refdef.viewaxis[2],  0,  1,  0);
+			break;
+		case 2: 
+			// -Y
+			VectorSet( refdef.viewaxis[0],  0, -1,  0);
+			VectorSet( refdef.viewaxis[1],  1,  0,  0);
+			VectorSet( refdef.viewaxis[2],  0,  0, -1);
+			break;
+		case 3: 
+			// +Y
+			VectorSet( refdef.viewaxis[0],  0,  1,  0);
+			VectorSet( refdef.viewaxis[1],  1,  0,  0);
+			VectorSet( refdef.viewaxis[2],  0,  0,  1);
+			break;
+		case 4:
+			// -Z
+			VectorSet( refdef.viewaxis[0],  0,  0, -1);
+			VectorSet( refdef.viewaxis[1],  1,  0,  0);
+			VectorSet( refdef.viewaxis[2],  0,  1,  0);
+			break;
+		case 5:
+			// +Z
+			VectorSet( refdef.viewaxis[0],  0,  0,  1);
+			VectorSet( refdef.viewaxis[1], -1,  0,  0);
+			VectorSet( refdef.viewaxis[2],  0,  1,  0);
+			break;
+	}
+
+	refdef.fov_x = 90;
+	refdef.fov_y = 90;
+
+	refdef.x = 0;
+	refdef.y = 0;
+	refdef.width = tr.renderCubeFbo->width;
+	refdef.height = tr.renderCubeFbo->height;
+
+	refdef.time = 0;
+
+	if (!subscene)
+	{
+		RE_BeginScene(&refdef);
+
+		// FIXME: sun shadows aren't rendered correctly in cubemaps
+		// fix involves changing r_FBufScale to fit smaller cubemap image size, or rendering cubemap to framebuffer first
+		if(0) //(glRefConfig.framebufferObject && r_sunlightMode->integer && (r_forceSun->integer || tr.sunShadows))
+		{
+			R_RenderSunShadowMaps(&refdef, 0);
+			R_RenderSunShadowMaps(&refdef, 1);
+			R_RenderSunShadowMaps(&refdef, 2);
+			R_RenderSunShadowMaps(&refdef, 3);
+		}
+	}
+
+	{
+		vec3_t ambient, directed, lightDir;
+		R_LightForPoint(tr.refdef.vieworg, ambient, directed, lightDir);
+		tr.refdef.colorScale = 1.0f; //766.0f / (directed[0] + directed[1] + directed[2] + 1.0f);
+		// only print message for first side
+		if (directed[0] + directed[1] + directed[2] == 0 && cubemapSide == 0)
+		{
+			ri.Printf(PRINT_ALL, "cubemap %d (%f, %f, %f) is outside the lightgrid!\n", cubemapIndex, tr.refdef.vieworg[0], tr.refdef.vieworg[1], tr.refdef.vieworg[2]);
+		}
+	}
+
+	Com_Memset( &parms, 0, sizeof( parms ) );
+
+	parms.viewportX = 0;
+	parms.viewportY = 0;
+	parms.viewportWidth = tr.renderCubeFbo->width;
+	parms.viewportHeight = tr.renderCubeFbo->height;
+	parms.isPortal = qfalse;
+	parms.isMirror = qtrue;
+	parms.flags =  VPF_NOVIEWMODEL | VPF_NOCUBEMAPS;
+
+	parms.fovX = 90;
+	parms.fovY = 90;
+
+	VectorCopy( refdef.vieworg, parms.or.origin );
+	VectorCopy( refdef.viewaxis[0], parms.or.axis[0] );
+	VectorCopy( refdef.viewaxis[1], parms.or.axis[1] );
+	VectorCopy( refdef.viewaxis[2], parms.or.axis[2] );
+
+	VectorCopy( refdef.vieworg, parms.pvsOrigin );
+
+	// FIXME: sun shadows aren't rendered correctly in cubemaps
+	// fix involves changing r_FBufScale to fit smaller cubemap image size, or rendering cubemap to framebuffer first
+	if (0) //(r_depthPrepass->value && ((r_forceSun->integer) || tr.sunShadows))
+	{
+		parms.flags = VPF_USESUNLIGHT;
+	}
+
+	parms.targetFbo = tr.renderCubeFbo;
+	parms.targetFboLayer = cubemapSide;
+	parms.targetFboCubemapIndex = cubemapIndex;
+
+	R_RenderView(&parms);
+
+	if (subscene)
+	{
+		tr.refdef.colorScale = oldColorScale;
+	}
+	else
+	{
+		RE_EndScene();
 	}
 }
