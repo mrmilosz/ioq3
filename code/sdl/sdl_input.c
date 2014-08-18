@@ -63,7 +63,6 @@ static double originalMouseSpeed = -1.0;
 static cvar_t *in_nograb;
 
 static cvar_t *in_joystick          = NULL;
-static cvar_t *in_joystickDebug     = NULL;
 static cvar_t *in_joystickThreshold = NULL;
 static cvar_t *in_joystickNo        = NULL;
 static cvar_t *in_joystickUseAnalog = NULL;
@@ -658,7 +657,6 @@ IN_JoyMove
 */
 static void IN_JoyMove( void )
 {
-	qboolean joy_pressed[ARRAY_LEN(joy_keys)];
 	unsigned int axes = 0;
 	unsigned int hats = 0;
 	int total = 0;
@@ -668,8 +666,6 @@ static void IN_JoyMove( void )
 		return;
 
 	SDL_JoystickUpdate();
-
-	memset(joy_pressed, '\0', sizeof (joy_pressed));
 
 	// update the ball state.
 	total = SDL_JoystickNumBalls(stick);
@@ -912,17 +908,17 @@ static void IN_ProcessEvents( void )
 			case SDL_MOUSEBUTTONDOWN:
 			case SDL_MOUSEBUTTONUP:
 				{
-					unsigned char b;
+					int b;
 					switch( e.button.button )
 					{
-						case 1:   b = K_MOUSE1;     break;
-						case 2:   b = K_MOUSE3;     break;
-						case 3:   b = K_MOUSE2;     break;
-						case 4:   b = K_MWHEELUP;   break;
-						case 5:   b = K_MWHEELDOWN; break;
-						case 6:   b = K_MOUSE4;     break;
-						case 7:   b = K_MOUSE5;     break;
-						default:  b = K_AUX1 + ( e.button.button - 8 ) % 16; break;
+						case SDL_BUTTON_LEFT:		b = K_MOUSE1;     break;
+						case SDL_BUTTON_MIDDLE:		b = K_MOUSE3;     break;
+						case SDL_BUTTON_RIGHT:		b = K_MOUSE2;     break;
+						case SDL_BUTTON_WHEELUP:	b = K_MWHEELUP;   break;
+						case SDL_BUTTON_WHEELDOWN:	b = K_MWHEELDOWN; break;
+						case SDL_BUTTON_X1:			b = K_MOUSE4;     break;
+						case SDL_BUTTON_X2:			b = K_MOUSE5;     break;
+						default:  b = K_AUX1 + ( e.button.button - SDL_BUTTON_X2 + 1 ) % 16; break;
 					}
 					Com_QueueEvent( 0, SE_KEY, b,
 						( e.type == SDL_MOUSEBUTTONDOWN ? qtrue : qfalse ), 0, NULL );
@@ -999,7 +995,7 @@ void IN_Frame( void )
 	if ( (vidRestartTime != 0) && (vidRestartTime < Sys_Milliseconds()) )
 	{
 		vidRestartTime = 0;
-		Cbuf_AddText( "vid_restart" );
+		Cbuf_AddText( "vid_restart\n" );
 	}
 }
 
@@ -1041,7 +1037,6 @@ void IN_Init( void )
 	in_nograb = Cvar_Get( "in_nograb", "0", CVAR_ARCHIVE );
 
 	in_joystick = Cvar_Get( "in_joystick", "0", CVAR_ARCHIVE|CVAR_LATCH );
-	in_joystickDebug = Cvar_Get( "in_joystickDebug", "0", CVAR_TEMP );
 	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.15", CVAR_ARCHIVE );
 
 #ifdef MACOS_X_ACCELERATION_HACK

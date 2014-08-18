@@ -593,21 +593,6 @@ void GLimp_InitExtraExtensions()
 		ri.Printf(PRINT_ALL, result[2], extension);
 	}
 
-	// GL_EXT_texture_sRGB
-	extension = "GL_EXT_texture_sRGB";
-	glRefConfig.texture_srgb = qfalse;
-	if (GLimp_HaveExtension(extension))
-	{
-		if (r_srgb->integer)
-			glRefConfig.texture_srgb = qtrue;
-
-		ri.Printf(PRINT_ALL, result[glRefConfig.texture_srgb], extension);
-	}
-	else
-	{
-		ri.Printf(PRINT_ALL, result[2], extension);
-	}
-
 	glRefConfig.textureCompression = TCR_NONE;
 
 	// GL_EXT_texture_compression_latc
@@ -664,4 +649,37 @@ void GLimp_InitExtraExtensions()
 	{
 		ri.Printf(PRINT_ALL, result[2], extension);
 	}
+
+	// GL_ARB_seamless_cube_map
+	extension = "GL_ARB_seamless_cube_map";
+	glRefConfig.seamlessCubeMap = qfalse;
+	if( GLimp_HaveExtension( extension ) )
+	{
+		if (r_arb_seamless_cube_map->integer)
+			glRefConfig.seamlessCubeMap = qtrue;
+
+		ri.Printf(PRINT_ALL, result[glRefConfig.seamlessCubeMap], extension);
+	}
+	else
+	{
+		ri.Printf(PRINT_ALL, result[2], extension);
+	}
+
+	// GL_ARB_vertex_type_2_10_10_10_rev
+	extension = "GL_ARB_vertex_type_2_10_10_10_rev";
+	glRefConfig.packedNormalDataType = GL_UNSIGNED_BYTE;
+	if( GLimp_HaveExtension( extension ) )
+	{
+		if (r_arb_vertex_type_2_10_10_10_rev->integer)
+			glRefConfig.packedNormalDataType = GL_UNSIGNED_INT_2_10_10_10_REV;
+
+		ri.Printf(PRINT_ALL, result[r_arb_vertex_type_2_10_10_10_rev->integer ? 1 : 0], extension);
+	}
+	else
+	{
+		ri.Printf(PRINT_ALL, result[2], extension);
+	}
+
+	// use float lightmaps?
+	glRefConfig.floatLightmap = (glRefConfig.textureFloat && glRefConfig.halfFloatPixel && r_floatLightmap->integer && r_hdr->integer);
 }

@@ -1525,7 +1525,7 @@ void Hunk_SmallLog( void) {
 
 /*
 =================
-Com_InitZoneMemory
+Com_InitHunkZoneMemory
 =================
 */
 void Com_InitHunkMemory( void ) {
@@ -3548,7 +3548,7 @@ void Field_AutoComplete( field_t *field )
 ==================
 Com_RandomBytes
 
-fills string array with len radom bytes, peferably from the OS randomizer
+fills string array with len random bytes, preferably from the OS randomizer
 ==================
 */
 void Com_RandomBytes( byte *string, int len )
