@@ -301,7 +301,6 @@ extern	int serverBansCount;
 extern	cvar_t	*sv_voip;
 #endif
 
-
 //===========================================================
 
 //

@@ -93,6 +93,7 @@ cvar_t	*com_legacyprotocol;
 cvar_t	*com_basegame;
 cvar_t  *com_homepath;
 cvar_t	*com_busyWait;
+cvar_t  *com_crashCommand;
 
 #if idx64
 	int (*Q_VMftol)(void);
@@ -341,6 +342,11 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 	Com_Shutdown ();
 
 	Sys_Error ("%s", com_errorMessage);
+
+	// instead of hanging in limbo forever, we can run a user-specified command
+	if (code == ERR_DROP) {
+		Cmd_ExecuteString(com_crashCommand->string);
+	}
 }
 
 
@@ -2752,6 +2758,9 @@ void Com_Init( char *commandLine ) {
 	com_abnormalExit = Cvar_Get( "com_abnormalExit", "0", CVAR_ROM );
 	com_busyWait = Cvar_Get("com_busyWait", "0", CVAR_ARCHIVE);
 	Cvar_Get("com_errorMessage", "", CVAR_ROM | CVAR_NORESTART);
+
+	// the command to run after the server crashes
+	com_crashCommand = Cvar_Get("com_crashCommand", "map test_bigbox", CVAR_ARCHIVE);
 
 	com_introPlayed = Cvar_Get( "com_introplayed", "0", CVAR_ARCHIVE);
 
